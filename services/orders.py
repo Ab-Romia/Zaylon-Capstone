@@ -151,9 +151,9 @@ async def get_customer_order_history(
         return [
             CustomerOrderHistory(
                 order_id=str(order.id)[:8].upper(),
-                product_name=order.product_name,
-                total_price=order.total_price,
-                status=order.status,
+                product_name=order.product_name or "Unknown Product",
+                total_price=float(order.total_price) if order.total_price else 0.0,
+                status=order.status or "unknown",
                 created_at=order.created_at.isoformat() if order.created_at else ""
             )
             for order in orders

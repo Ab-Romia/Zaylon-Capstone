@@ -46,6 +46,8 @@ from models import (
     # Common models
     HealthCheckResponse, ErrorResponse
 )
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any
 from services import products, context, intent, cache, analytics
 from services import (
     get_embedding_service, get_vector_db, init_vector_db, close_vector_db,
@@ -879,6 +881,200 @@ async def n8n_prepare_context_enhanced(
         customer_order_history=order_history_formatted,
         rag_enabled=True
     )
+
+
+# Combined request/response models for streamlined endpoint
+class ProcessCompleteRequest(BaseModel):
+    customer_id: str
+    message: str
+    channel: str = Field(..., pattern="^(instagram|whatsapp)$")
+    ai_response: Optional[str] = None
+    action: Optional[str] = None
+    order_data: Optional[Dict[str, Any]] = None
+    tokens_used: int = 0
+    response_time_ms: int = 0
+
+
+class ProcessCompleteResponse(BaseModel):
+    # Context data (for AI call)
+    conversation_history: str
+    relevant_products: str
+    customer_order_history: str
+    intent: str
+    confidence: float
+    entities: Dict[str, Any]
+    customer_name: Optional[str]
+    customer_phone: Optional[str]
+    total_orders: int
+    total_spent: float
+    preferred_language: str
+    skip_ai: bool
+    cached_response: Optional[str]
+    # Order result (if order was created)
+    order_created: bool = False
+    order_id: Optional[str] = None
+    order_error: Optional[str] = None
+    final_response: Optional[str] = None
+
+
+@app.post(
+    "/n8n/process-complete",
+    response_model=ProcessCompleteResponse,
+    tags=["n8n Integration"],
+    summary="Complete message processing in one call"
+)
+@limiter.limit(get_rate_limit_string())
+async def n8n_process_complete(
+    request: Request,
+    body: ProcessCompleteRequest,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Streamlined endpoint that handles everything in one call.
+
+    Phase 1 (ai_response is None): Prepare context for AI
+    Phase 2 (ai_response provided): Store interaction and create order if needed
+    """
+    start_time = time.time()
+
+    # Phase 1: Prepare context
+    if body.ai_response is None:
+        # Check cache
+        cache_result = await cache.check_cache(db, body.message)
+
+        # Get context
+        context_result = await context.retrieve_context(
+            db=db, customer_id=body.customer_id, limit=settings.max_conversation_history
+        )
+
+        # Get order history
+        order_history = await get_customer_order_history(db, body.customer_id, limit=5)
+        order_history_formatted = format_order_history_for_ai(order_history)
+
+        # Get enhanced metadata
+        base_meta = {
+            "name": context_result.customer_metadata.name,
+            "phone": context_result.customer_metadata.phone,
+            "total_interactions": context_result.customer_metadata.total_interactions,
+            "preferred_language": context_result.customer_metadata.preferred_language,
+            "linked_channels": context_result.customer_metadata.linked_channels
+        }
+        enhanced_metadata = await get_enhanced_customer_metadata(db, body.customer_id, base_meta)
+
+        # RAG search
+        rag_service = get_rag_service()
+        rag_context = await rag_service.prepare_rag_context(body.message, db)
+
+        # Classify intent
+        intent_result = intent.classify_intent(body.message)
+
+        # Determine skip_ai
+        skip_ai = False
+        cached_response = None
+        if cache_result.cached:
+            skip_ai = True
+            cached_response = cache_result.response
+        elif intent_result.skip_ai and intent_result.suggested_response:
+            skip_ai = True
+            cached_response = intent_result.suggested_response
+
+        # Store incoming message
+        await context.store_message(
+            db=db, customer_id=body.customer_id, channel=body.channel,
+            message=body.message, direction="incoming", intent=intent_result.intent
+        )
+
+        return ProcessCompleteResponse(
+            conversation_history=context_result.formatted_for_ai,
+            relevant_products=rag_context["products_formatted"],
+            customer_order_history=order_history_formatted,
+            intent=intent_result.intent,
+            confidence=intent_result.confidence,
+            entities=intent_result.entities.model_dump(),
+            customer_name=enhanced_metadata.name,
+            customer_phone=enhanced_metadata.phone,
+            total_orders=enhanced_metadata.total_orders,
+            total_spent=enhanced_metadata.total_spent,
+            preferred_language=enhanced_metadata.preferred_language,
+            skip_ai=skip_ai,
+            cached_response=cached_response
+        )
+
+    # Phase 2: Process AI response
+    else:
+        final_response = body.ai_response
+        order_created = False
+        order_id = None
+        order_error = None
+
+        # Create order if requested
+        if body.action == "create_order" and body.order_data:
+            order_request = CreateOrderRequest(
+                customer_id=body.customer_id,
+                channel=body.channel,
+                product_id=body.order_data.get("product_id", ""),
+                product_name=body.order_data.get("product_name", ""),
+                size=body.order_data.get("size", ""),
+                color=body.order_data.get("color", ""),
+                quantity=body.order_data.get("quantity", 1),
+                total_price=body.order_data.get("total_price", 0),
+                customer_name=body.order_data.get("customer_name", ""),
+                phone=body.order_data.get("phone", ""),
+                address=body.order_data.get("address", "")
+            )
+
+            order_result = await create_order(db, order_request)
+            order_created = order_result.success
+            order_id = order_result.order_id
+            order_error = order_result.error
+
+            # Replace placeholders
+            if order_created:
+                short_id = order_id[:8].upper() if order_id else ""
+                final_response = final_response.replace("{{ORDER_ID}}", short_id)
+            else:
+                final_response = final_response.replace("{{ORDER_ID}}", "")
+                final_response = final_response.replace("{{ERROR_MESSAGE}}", order_result.message or order_error or "")
+
+        # Store interaction
+        await context.store_message(
+            db=db, customer_id=body.customer_id, channel=body.channel,
+            message=final_response, direction="outgoing", intent=body.action
+        )
+
+        # Cache if appropriate
+        if body.action not in ["create_order"]:
+            await cache.store_cache(db, body.message, final_response, body.action or "answer")
+
+        # Log analytics
+        await analytics.log_event(
+            db=db, customer_id=body.customer_id,
+            event_type="order_created" if order_created else "interaction_complete",
+            event_data={"action": body.action, "order_id": order_id},
+            response_time_ms=body.response_time_ms,
+            ai_tokens_used=body.tokens_used
+        )
+
+        return ProcessCompleteResponse(
+            conversation_history="",
+            relevant_products="",
+            customer_order_history="",
+            intent=body.action or "answer",
+            confidence=1.0,
+            entities={},
+            customer_name=None,
+            customer_phone=None,
+            total_orders=0,
+            total_spent=0.0,
+            preferred_language="en",
+            skip_ai=False,
+            cached_response=None,
+            order_created=order_created,
+            order_id=order_id,
+            order_error=order_error,
+            final_response=final_response
+        )
 
 
 # ============================================================================
