@@ -263,13 +263,33 @@ def format_conversation_for_ai(messages: List[MessageInfo]) -> str:
 
     lines = ["CONVERSATION HISTORY:"]
 
-    # Show last 10 messages for context
+    # Show last 10 messages for context, but deduplicate consecutive identical messages
     recent_messages = messages[-10:]
 
+    prev_message = None
+    duplicate_count = 0
+
     for msg in recent_messages:
+        # Skip consecutive duplicate messages
+        if prev_message and msg.message == prev_message.message and msg.direction == prev_message.direction:
+            duplicate_count += 1
+            continue
+
+        # If we had duplicates, add a note
+        if duplicate_count > 0:
+            lines.append(f"  [... repeated {duplicate_count} more time(s)]")
+            duplicate_count = 0
+
         role = "Customer" if msg.direction == "incoming" else "Assistant"
         timestamp = msg.timestamp[:19].replace("T", " ")  # Simplified timestamp
-        lines.append(f"[{timestamp}] {role}: {msg.message}")
+        # Truncate very long messages
+        message_text = msg.message[:500] + "..." if len(msg.message) > 500 else msg.message
+        lines.append(f"[{timestamp}] {role}: {message_text}")
+        prev_message = msg
+
+    # Handle trailing duplicates
+    if duplicate_count > 0:
+        lines.append(f"  [... repeated {duplicate_count} more time(s)]")
 
     return "\n".join(lines)
 
