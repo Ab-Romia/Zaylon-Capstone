@@ -1,0 +1,381 @@
+{
+  "name": "Instagram DM Automation - Enhanced v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-dm",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c62d2b92-0252-4058-85c4-2a6afb8d7e09",
+      "name": "Instagram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "instagram-dm-handler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract message data from Meta webhook payload\nconst webhookData = $input.all()[0].json;\nconst startTime = Date.now();\n\n// Validate webhook structure\nif (!webhookData.entry || !webhookData.entry[0]) {\n  return [{ json: { error: 'Invalid webhook payload', skip: true } }];\n}\n\nconst entry = webhookData.entry[0];\nconst messaging = entry.messaging?.[0];\n\n// Check if this is a message event\nif (!messaging || !messaging.message) {\n  return [{ json: { error: 'Not a message event', skip: true } }];\n}\n\nconst senderId = messaging.sender.id;\nconst recipientId = messaging.recipient.id;\nconst timestamp = messaging.timestamp;\nconst messageText = messaging.message.text || '';\nconst messageId = messaging.message.mid;\n\n// Skip if no text\nif (!messageText.trim()) {\n  return [{ json: { error: 'No text in message', skip: true } }];\n}\n\n// Build customer ID\nconst customerId = `instagram:${senderId}`;\n\nreturn [{\n  json: {\n    customer_id: customerId,\n    sender_id: senderId,\n    recipient_id: recipientId,\n    message_text: messageText,\n    message_id: messageId,\n    timestamp: timestamp,\n    start_time: startTime,\n    channel: 'instagram',\n    skip: false\n  }\n}];"
+      },
+      "id": "23932c1d-6c4a-4776-8320-04549840105c",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "19d58792-dd7f-4c3b-8503-5d39122c59d0",
+      "name": "Should Skip?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'skipped', reason: $json.error }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "41cc180a-1587-4a01-8fea-b360c3377e3f",
+      "name": "Skip Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 520]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dm-service-mpjf.onrender.com/n8n/prepare-context-enhanced",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"customer_id\": $json.customer_id,\n  \"message\": $json.message_text,\n  \"channel\": $json.channel\n} }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a57b679c-ee83-4ca0-94bc-47adbd36ff62",
+      "name": "Prepare Enhanced Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "microservice_api_key",
+          "name": "Microservice API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip_ai }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "5802a867-3ee2-40d3-bea0-7802da687b8c",
+      "name": "Skip AI Call?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use cached or pre-defined response\nconst contextData = $input.first().json;\nconst messageData = $('Extract Message Data').item.json;\n\nreturn [{\n  json: {\n    response_text: contextData.cached_response,\n    intent: contextData.intent_analysis.intent,\n    action: 'cached_response',\n    order_data: null,\n    tokens_used: 0,\n    sender_id: messageData.sender_id,\n    customer_id: messageData.customer_id,\n    user_message: messageData.message_text,\n    start_time: messageData.start_time,\n    channel: messageData.channel\n  }\n}];"
+      },
+      "id": "1018ccf6-e546-4ba3-a087-cdef7c36b643",
+      "name": "Use Cached Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 160]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "create",
+        "modelId": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert Egyptian e-commerce assistant for a clothing store. Help customers browse products, answer questions, and complete orders professionally.\n\nCRITICAL RULES:\n1. ALWAYS respond in the SAME language the customer uses (Arabic, Franco-Arabic, or English)\n2. Be friendly, professional, and concise\n3. Prices are in Egyptian Pounds (EGP)\n4. RESPOND ONLY with valid JSON - NO markdown, NO code blocks\n\nFOR ORDERS - Collect ALL required information:\n- Full name\n- Phone number (Egyptian format: +20...)\n- Complete delivery address\n- Product details (size, color, quantity)\n\nRESPONSE FORMAT - Always respond with this exact JSON structure:\n\n{\n  \"text\": \"Your message to customer\",\n  \"action\": \"answer|request_info|create_order\",\n  \"order_data\": null\n}\n\nACTIONS:\n- \"answer\": General response, product info, greetings\n- \"request_info\": Need more details from customer\n- \"create_order\": Ready to create order (ONLY when ALL info is collected)\n\nFOR CREATE_ORDER ACTION - Use this exact order_data format:\n{\n  \"text\": \"{{ORDER_SUCCESS_MESSAGE}}\",\n  \"action\": \"create_order\",\n  \"order_data\": {\n    \"product_id\": \"exact-uuid-from-products-list\",\n    \"product_name\": \"Product Name\",\n    \"size\": \"M\",\n    \"color\": \"blue\",\n    \"quantity\": 1,\n    \"total_price\": 599.00,\n    \"customer_name\": \"Customer Full Name\",\n    \"phone\": \"+201234567890\",\n    \"address\": \"Complete delivery address with details\"\n  }\n}\n\nIMPORTANT FOR ORDER TEXT:\n- Use placeholder {{ORDER_ID}} where the order ID should appear\n- Use placeholder {{ERROR_MESSAGE}} if order fails\n- The system will replace these with actual values\n\nExample success message:\n\"text\": \"تم تأكيد طلبك بنجاح! رقم الطلب: {{ORDER_ID}}. سيتم التواصل معك قريباً لتأكيد التوصيل.\"\n\nExample for when you need more info:\n\"text\": \"عشان أكمل الطلب، محتاج منك العنوان الكامل للتوصيل\"\n\nCUSTOMER CONTEXT USAGE:\n- Check customer's previous orders to personalize recommendations\n- Reference past purchases when relevant\n- Use customer's preferred language from history\n- If returning customer, acknowledge their loyalty\n\nVALIDATION RULES:\n- Ensure product_id is from the provided products list\n- Verify size and color are available for the product\n- Phone must be Egyptian format (+20...)\n- Address must be detailed enough for delivery\n\nNEVER:\n- Invent product IDs\n- Assume information not provided\n- Skip required fields\n- Use markdown formatting"
+            },
+            {
+              "role": "user",
+              "content": "={{ $('Prepare Enhanced Context').item.json.conversation_history }}\n\n{{ $('Prepare Enhanced Context').item.json.relevant_products }}\n\n{{ $('Prepare Enhanced Context').item.json.customer_order_history }}\n\n---\nCUSTOMER CONTEXT:\nIntent: {{ $('Prepare Enhanced Context').item.json.intent_analysis.intent }}\nConfidence: {{ $('Prepare Enhanced Context').item.json.intent_analysis.confidence }}\nExtracted Entities: {{ JSON.stringify($('Prepare Enhanced Context').item.json.intent_analysis.entities) }}\n\nCustomer Profile:\n- Name: {{ $('Prepare Enhanced Context').item.json.customer_metadata.name || 'Not provided' }}\n- Phone: {{ $('Prepare Enhanced Context').item.json.customer_metadata.phone || 'Not provided' }}\n- Total Orders: {{ $('Prepare Enhanced Context').item.json.customer_metadata.total_orders }}\n- Total Spent: {{ $('Prepare Enhanced Context').item.json.customer_metadata.total_spent }} EGP\n- Preferred Language: {{ $('Prepare Enhanced Context').item.json.customer_metadata.preferred_language }}\n---\n\nCustomer message: {{ $('Extract Message Data').item.json.message_text }}\n\nRespond with ONLY valid JSON (no markdown):"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 1000
+        }
+      },
+      "id": "cb61d092-d2cc-48a2-b986-87eef4e4fcbd",
+      "name": "OpenAI GPT-4o-mini",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1340, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai_account",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response\nconst aiResponse = $input.first().json;\nconst messageData = $('Extract Message Data').item.json;\nconst contextData = $('Prepare Enhanced Context').item.json;\n\nlet responseData;\ntry {\n  // Extract content from OpenAI response\n  let content = aiResponse.message?.content || \n                aiResponse.choices?.[0]?.message?.content || \n                '';\n  \n  // Clean markdown formatting if present\n  content = content.trim();\n  if (content.startsWith('```json')) {\n    content = content.replace(/```json\\s*/g, '').replace(/```\\s*$/g, '');\n  } else if (content.startsWith('```')) {\n    content = content.replace(/```\\s*/g, '');\n  }\n  content = content.trim();\n  \n  // Parse JSON\n  responseData = JSON.parse(content);\n  \n  // Validate structure\n  if (!responseData.text) {\n    throw new Error('Missing text field in response');\n  }\n  if (!responseData.action) {\n    responseData.action = 'answer';\n  }\n  if (responseData.action === 'create_order' && !responseData.order_data) {\n    responseData.action = 'request_info';\n    responseData.order_data = null;\n  }\n  \n} catch (e) {\n  console.error('Failed to parse AI response:', e.message);\n  \n  let fallbackText = aiResponse.message?.content || \n                     aiResponse.choices?.[0]?.message?.content || \n                     'عذراً، حدث خطأ. من فضلك حاول مرة أخرى.';\n  \n  responseData = {\n    text: fallbackText,\n    action: 'answer',\n    order_data: null\n  };\n}\n\nreturn [{\n  json: {\n    response_text: responseData.text,\n    action: responseData.action,\n    order_data: responseData.order_data || null,\n    intent: contextData.intent_analysis.intent,\n    tokens_used: aiResponse.usage?.total_tokens || 0,\n    sender_id: messageData.sender_id,\n    customer_id: messageData.customer_id,\n    user_message: messageData.message_text,\n    start_time: messageData.start_time,\n    channel: messageData.channel\n  }\n}];"
+      },
+      "id": "a6b58f6f-1443-4345-880c-5cf6a2fa7348",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "264c7171-0484-4fa1-9f6e-afaed88f131b",
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1780, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "operation": "equals",
+              "value2": "create_order"
+            }
+          ]
+        }
+      },
+      "id": "b664a12f-70fa-45ce-96ae-1925a0811fde",
+      "name": "Should Create Order?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2000, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dm-service-mpjf.onrender.com/n8n/create-order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"customer_id\": $json.customer_id,\n  \"channel\": $json.channel,\n  \"product_id\": $json.order_data.product_id,\n  \"product_name\": $json.order_data.product_name,\n  \"size\": $json.order_data.size,\n  \"color\": $json.order_data.color,\n  \"quantity\": $json.order_data.quantity,\n  \"total_price\": $json.order_data.total_price,\n  \"customer_name\": $json.order_data.customer_name,\n  \"phone\": $json.order_data.phone,\n  \"address\": $json.order_data.address\n} }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "aacfa163-f339-42e6-aed7-687b456fd33e",
+      "name": "Create Order (Microservice)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 160],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "microservice_api_key",
+          "name": "Microservice API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process order result and update response text\nconst orderResult = $input.first().json;\nconst prevData = $('Should Create Order?').item.json;\n\nlet finalText = prevData.response_text;\n\nif (orderResult.success) {\n  // Replace placeholder with actual order ID\n  const shortOrderId = orderResult.order_id.substring(0, 8).toUpperCase();\n  finalText = finalText.replace('{{ORDER_ID}}', shortOrderId);\n  finalText = finalText.replace('{{ERROR_MESSAGE}}', '');\n} else {\n  // Replace with error message\n  finalText = finalText.replace('{{ORDER_ID}}', '');\n  finalText = finalText.replace('{{ERROR_MESSAGE}}', orderResult.message || orderResult.error);\n  \n  // If text still has placeholders, use a fallback message\n  if (finalText.includes('{{')) {\n    const errorMsg = orderResult.message || 'حدث خطأ في إنشاء الطلب';\n    finalText = `عذراً، ${errorMsg}. من فضلك حاول مرة أخرى أو تواصل معنا.`;\n  }\n}\n\nreturn [{\n  json: {\n    ...prevData,\n    response_text: finalText,\n    order_result: orderResult,\n    order_id: orderResult.order_id || null,\n    order_success: orderResult.success\n  }\n}];"
+      },
+      "id": "f8b2c3d4-e5a6-4789-0abc-1def23456789",
+      "name": "Process Order Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dm-service-mpjf.onrender.com/n8n/store-interaction",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"customer_id\": $json.customer_id,\n  \"channel\": $json.channel,\n  \"user_message\": $json.user_message,\n  \"ai_response\": $json.response_text,\n  \"intent\": $json.intent,\n  \"action\": $json.action,\n  \"order_data\": $json.order_data,\n  \"response_time_ms\": Date.now() - $json.start_time,\n  \"ai_tokens_used\": $json.tokens_used || 0\n} }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "6921f464-38aa-4858-b8a6-3b3c0c0f9ae1",
+      "name": "Store Interaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2660, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "microservice_api_key",
+          "name": "Microservice API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/me/messages?access_token={{ $env.PAGE_ACCESS_TOKEN }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"recipient\": {\n    \"id\": $json.sender_id\n  },\n  \"message\": {\n    \"text\": $json.response_text\n  }\n} }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "d848d0d2-62af-42a0-a741-85f47041d3e6",
+      "name": "Send Instagram Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2880, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', message_sent: true, order_created: $json.order_success || false }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ec7ea2cc-4e53-445c-82af-85fda6746799",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3100, 280]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Error: {{ $json.error || $json.message || 'Unknown error' }}"
+      },
+      "id": "448dee42-ef09-42b2-af7e-1b581fb4c75e",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log error and prepare fallback response\nconst errorData = $input.first().json;\nconsole.error('Workflow Error:', JSON.stringify(errorData, null, 2));\n\nreturn [{\n  json: {\n    error: true,\n    message: 'عذراً، حدث خطأ في معالجة رسالتك. سنتواصل معك قريباً.',\n    timestamp: new Date().toISOString(),\n    original_error: errorData.message || 'Unknown'\n  }\n}];"
+      },
+      "id": "23044c2b-6ba9-4323-a01f-e1d644dbf7b9",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', error: $json.message }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "6c083e6f-a718-47bc-b1a5-d5e306988cc2",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 600]
+    }
+  ],
+  "connections": {
+    "Instagram Webhook": {
+      "main": [[{"node": "Extract Message Data", "type": "main", "index": 0}]]
+    },
+    "Extract Message Data": {
+      "main": [[{"node": "Should Skip?", "type": "main", "index": 0}]]
+    },
+    "Should Skip?": {
+      "main": [
+        [{"node": "Skip Response", "type": "main", "index": 0}],
+        [{"node": "Prepare Enhanced Context", "type": "main", "index": 0}]
+      ]
+    },
+    "Prepare Enhanced Context": {
+      "main": [[{"node": "Skip AI Call?", "type": "main", "index": 0}]]
+    },
+    "Skip AI Call?": {
+      "main": [
+        [{"node": "Use Cached Response", "type": "main", "index": 0}],
+        [{"node": "OpenAI GPT-4o-mini", "type": "main", "index": 0}]
+      ]
+    },
+    "Use Cached Response": {
+      "main": [[{"node": "Merge Responses", "type": "main", "index": 0}]]
+    },
+    "OpenAI GPT-4o-mini": {
+      "main": [[{"node": "Parse AI Response", "type": "main", "index": 0}]]
+    },
+    "Parse AI Response": {
+      "main": [[{"node": "Merge Responses", "type": "main", "index": 1}]]
+    },
+    "Merge Responses": {
+      "main": [[{"node": "Should Create Order?", "type": "main", "index": 0}]]
+    },
+    "Should Create Order?": {
+      "main": [
+        [{"node": "Create Order (Microservice)", "type": "main", "index": 0}],
+        [{"node": "Store Interaction", "type": "main", "index": 0}]
+      ]
+    },
+    "Create Order (Microservice)": {
+      "main": [[{"node": "Process Order Result", "type": "main", "index": 0}]]
+    },
+    "Process Order Result": {
+      "main": [[{"node": "Store Interaction", "type": "main", "index": 0}]]
+    },
+    "Store Interaction": {
+      "main": [[{"node": "Send Instagram Reply", "type": "main", "index": 0}]]
+    },
+    "Send Instagram Reply": {
+      "main": [[{"node": "Success Response", "type": "main", "index": 0}]]
+    },
+    "Error Handler": {
+      "main": [[{"node": "Log Error", "type": "main", "index": 0}]]
+    },
+    "Log Error": {
+      "main": [[{"node": "Error Response", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "3.0",
+  "meta": {
+    "instanceId": "instagram-dm-enhanced-v2"
+  },
+  "tags": ["instagram", "e-commerce", "ai", "automation", "rag", "enhanced"]
+}

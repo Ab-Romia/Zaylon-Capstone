@@ -339,3 +339,66 @@ class PrepareContextResponseRAG(BaseModel):
     # RAG additions
     rag_context: Optional[RAGSearchResponse] = None
     rag_enabled: bool = False
+
+
+# ============================================================================
+# Order Management Models
+# ============================================================================
+
+class CreateOrderRequest(BaseModel):
+    customer_id: str = Field(..., description="Customer identifier")
+    channel: str = Field(..., pattern="^(instagram|whatsapp)$")
+    product_id: str = Field(..., description="Product UUID")
+    product_name: str
+    size: str
+    color: str
+    quantity: int = Field(default=1, ge=1)
+    total_price: float = Field(..., gt=0)
+    customer_name: str
+    phone: str
+    address: str
+
+
+class CreateOrderResponse(BaseModel):
+    success: bool
+    order_id: Optional[str] = None
+    error: Optional[str] = None
+    message: str
+
+
+class CustomerOrderHistory(BaseModel):
+    order_id: str
+    product_name: str
+    total_price: float
+    status: str
+    created_at: str
+
+
+class EnhancedCustomerMetadata(BaseModel):
+    name: Optional[str]
+    phone: Optional[str]
+    total_interactions: int
+    preferred_language: str
+    linked_channels: List[str]
+    # Enhanced fields
+    total_orders: int = 0
+    total_spent: float = 0.0
+    last_order_date: Optional[str] = None
+    recent_orders: List[CustomerOrderHistory] = []
+
+
+class PrepareContextEnhancedRequest(BaseModel):
+    customer_id: str
+    message: str = Field(..., min_length=1, max_length=5000)
+    channel: str = Field(..., pattern="^(instagram|whatsapp)$")
+
+
+class PrepareContextEnhancedResponse(BaseModel):
+    conversation_history: str
+    relevant_products: str
+    intent_analysis: IntentClassifyResponse
+    cached_response: Optional[str] = None
+    skip_ai: bool
+    customer_metadata: EnhancedCustomerMetadata
+    customer_order_history: str
+    rag_enabled: bool = False

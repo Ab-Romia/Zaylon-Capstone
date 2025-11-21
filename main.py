@@ -40,6 +40,9 @@ from models import (
     RAGSearchRequest, RAGSearchResponse, RAGProductResult, RAGKnowledgeResult,
     VectorDBStatusResponse, EmbedTextRequest, EmbedTextResponse,
     PrepareContextResponseRAG,
+    # Order management models
+    CreateOrderRequest, CreateOrderResponse,
+    PrepareContextEnhancedRequest, PrepareContextEnhancedResponse,
     # Common models
     HealthCheckResponse, ErrorResponse
 )
@@ -47,6 +50,10 @@ from services import products, context, intent, cache, analytics
 from services import (
     get_embedding_service, get_vector_db, init_vector_db, close_vector_db,
     get_ingestion_service, get_rag_service
+)
+from services.orders import (
+    create_order, get_customer_order_history,
+    get_enhanced_customer_metadata, format_order_history_for_ai
 )
 
 # Configure logging
@@ -674,6 +681,204 @@ async def n8n_store_interaction(
     logger.info(f"Stored interaction for {body.customer_id}, action={body.action}")
 
     return StoreInteractionResponse(success=True)
+
+
+@app.post(
+    "/n8n/create-order",
+    response_model=CreateOrderResponse,
+    tags=["n8n Integration"],
+    summary="Create order through microservice"
+)
+@limiter.limit(get_rate_limit_string())
+async def n8n_create_order(
+    request: Request,
+    body: CreateOrderRequest,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Create an order through the microservice.
+
+    This endpoint handles:
+    1. Validates product exists and has stock
+    2. Ensures customer exists in database
+    3. Creates the order
+    4. Updates customer profile
+    5. Returns order_id or error message
+
+    The AI should use order_id in success response or error in failure response.
+    """
+    result = await create_order(db, body)
+
+    # Log analytics
+    if result.success:
+        await analytics.log_event(
+            db=db,
+            customer_id=body.customer_id,
+            event_type="order_created",
+            event_data={
+                "order_id": result.order_id,
+                "product_name": body.product_name,
+                "total_price": body.total_price,
+                "channel": body.channel
+            }
+        )
+    else:
+        await analytics.log_event(
+            db=db,
+            customer_id=body.customer_id,
+            event_type="order_failed",
+            event_data={
+                "error": result.error,
+                "product_id": body.product_id
+            }
+        )
+
+    return result
+
+
+@app.post(
+    "/n8n/prepare-context-enhanced",
+    response_model=PrepareContextEnhancedResponse,
+    tags=["n8n Integration"],
+    summary="Prepare enhanced context with customer order history"
+)
+@limiter.limit(get_rate_limit_string())
+async def n8n_prepare_context_enhanced(
+    request: Request,
+    body: PrepareContextEnhancedRequest,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Enhanced context preparation with customer order history.
+
+    This endpoint does everything in one call:
+    1. Check cache for existing response
+    2. Retrieve conversation history
+    3. Get customer's previous orders
+    4. Search relevant products (hybrid RAG)
+    5. Classify intent and extract entities
+    6. Return everything formatted and ready for AI
+
+    Includes customer order history for personalized responses.
+    """
+    start_time = time.time()
+
+    # 1. Check cache first
+    cache_result = await cache.check_cache(db, body.message)
+    if cache_result.cached:
+        await analytics.log_event(
+            db=db,
+            customer_id=body.customer_id,
+            event_type="cache_hit",
+            event_data={"message": body.message[:100]}
+        )
+
+    # 2. Retrieve conversation history
+    context_result = await context.retrieve_context(
+        db=db,
+        customer_id=body.customer_id,
+        limit=settings.max_conversation_history
+    )
+
+    # 3. Get customer order history
+    order_history = await get_customer_order_history(db, body.customer_id, limit=5)
+    order_history_formatted = format_order_history_for_ai(order_history)
+
+    # 4. Get enhanced customer metadata
+    base_meta = {
+        "name": context_result.customer_metadata.name,
+        "phone": context_result.customer_metadata.phone,
+        "total_interactions": context_result.customer_metadata.total_interactions,
+        "preferred_language": context_result.customer_metadata.preferred_language,
+        "linked_channels": context_result.customer_metadata.linked_channels
+    }
+    enhanced_metadata = await get_enhanced_customer_metadata(db, body.customer_id, base_meta)
+
+    # 5. Search relevant products using RAG
+    rag_service = get_rag_service()
+    rag_context = await rag_service.prepare_rag_context(body.message, db)
+
+    # Log product search
+    await analytics.log_event(
+        db=db,
+        customer_id=body.customer_id,
+        event_type="product_searched",
+        event_data={
+            "query": body.message[:100],
+            "products_found": len(rag_context["products"])
+        }
+    )
+
+    # 6. Classify intent
+    intent_result = intent.classify_intent(body.message)
+
+    await analytics.log_event(
+        db=db,
+        customer_id=body.customer_id,
+        event_type="intent_classified",
+        event_data={
+            "intent": intent_result.intent,
+            "confidence": intent_result.confidence
+        }
+    )
+
+    # 7. Determine if we should skip AI
+    skip_ai = False
+    cached_response = None
+
+    if cache_result.cached:
+        skip_ai = True
+        cached_response = cache_result.response
+    elif intent_result.skip_ai and intent_result.suggested_response:
+        skip_ai = True
+        cached_response = intent_result.suggested_response
+
+    # 8. Store incoming message
+    await context.store_message(
+        db=db,
+        customer_id=body.customer_id,
+        channel=body.channel,
+        message=body.message,
+        direction="incoming",
+        intent=intent_result.intent
+    )
+
+    # Update customer profile with extracted entities
+    if intent_result.entities.phone:
+        await context.update_customer_profile(
+            db=db,
+            customer_id=body.customer_id,
+            phone=intent_result.entities.phone
+        )
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    logger.info(f"Enhanced prepare context completed in {elapsed_ms}ms (skip_ai={skip_ai})")
+
+    await analytics.log_event(
+        db=db,
+        customer_id=body.customer_id,
+        event_type="message_received",
+        event_data={
+            "channel": body.channel,
+            "intent": intent_result.intent,
+            "skip_ai": skip_ai,
+            "total_orders": enhanced_metadata.total_orders
+        },
+        response_time_ms=elapsed_ms
+    )
+
+    return PrepareContextEnhancedResponse(
+        conversation_history=context_result.formatted_for_ai,
+        relevant_products=rag_context["products_formatted"],
+        intent_analysis=intent_result,
+        cached_response=cached_response,
+        skip_ai=skip_ai,
+        customer_metadata=enhanced_metadata,
+        customer_order_history=order_history_formatted,
+        rag_enabled=True
+    )
 
 
 # ============================================================================
