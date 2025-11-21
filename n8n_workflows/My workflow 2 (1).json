@@ -1,0 +1,627 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-dm",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "dfd85d41-2396-4c94-bcf4-80dfcd8829ce",
+      "name": "Instagram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1104,
+        256
+      ],
+      "webhookId": "instagram-dm-handler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract message data from Instagram webhook payload OR test request\nconst webhookData = $input.all()[0].json;\nconst startTime = Date.now();\n\nconsole.log('Full webhook data:', JSON.stringify(webhookData, null, 2));\n\n// Check if this is a test request (has test_mode flag)\nconst isTestMode = webhookData.test_mode === true || webhookData.body?.test_mode === true;\n\n// n8n wraps it in 'body'\nlet data = webhookData.body || webhookData;\n\nconsole.log('Extracted data:', JSON.stringify(data, null, 2));\nconsole.log('Test mode:', isTestMode);\n\n// Modern Instagram API format (entry -> changes)\nif (data.entry && data.entry[0] && data.entry[0].changes) {\n  const change = data.entry[0].changes[0];\n  \n  console.log('Change object:', JSON.stringify(change, null, 2));\n  \n  if (change.field === 'messages' && change.value) {\n    const messageData = change.value;\n    \n    // Validate required fields\n    if (!messageData.sender || !messageData.message || !messageData.message.text) {\n      console.log('Missing required fields');\n      return [{ json: { error: 'Missing required fields', skip: true } }];\n    }\n    \n    const senderId = messageData.sender.id;\n    const recipientId = messageData.recipient?.id;\n    const timestamp = messageData.timestamp;\n    const messageText = messageData.message.text;\n    const messageId = messageData.message.mid;\n    \n    // Build customer ID\n    const customerId = `instagram:${senderId}`;\n    \n    console.log('Successfully extracted:', { customerId, messageText, isTestMode });\n    \n    return [{\n      json: {\n        customer_id: customerId,\n        sender_id: senderId,\n        recipient_id: recipientId,\n        message_text: messageText,\n        message_id: messageId,\n        timestamp: timestamp,\n        start_time: startTime,\n        channel: 'instagram',\n        is_test_mode: isTestMode,  // ← NEW FLAG\n        skip: false\n      }\n    }];\n  }\n}\n\n// Old Messenger format (entry -> messaging)\nif (data.entry && data.entry[0] && data.entry[0].messaging) {\n  const messaging = data.entry[0].messaging[0];\n  \n  if (!messaging || !messaging.message) {\n    return [{ json: { error: 'Not a message event', skip: true } }];\n  }\n  \n  const senderId = messaging.sender.id;\n  const recipientId = messaging.recipient.id;\n  const timestamp = messaging.timestamp;\n  const messageText = messaging.message.text || '';\n  const messageId = messaging.message.mid;\n  \n  if (!messageText.trim()) {\n    return [{ json: { error: 'No text in message', skip: true } }];\n  }\n  \n  const customerId = `instagram:${senderId}`;\n  \n  return [{\n    json: {\n      customer_id: customerId,\n      sender_id: senderId,\n      recipient_id: recipientId,\n      message_text: messageText,\n      message_id: messageId,\n      timestamp: timestamp,\n      start_time: startTime,\n      channel: 'instagram',\n      is_test_mode: isTestMode,  // ← NEW FLAG\n      skip: false\n    }\n  }];\n}\n\n// Invalid format\nconsole.log('Invalid webhook format - no matching structure found');\nreturn [{ json: { error: 'Invalid webhook payload', skip: true } }];"
+      },
+      "id": "5e207583-8d1d-4329-ae85-7343f6eed323",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'skipped', reason: $json.error }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "fb5d8400-ae89-43dd-acbd-ca806321c742",
+      "name": "Skip Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dm-service-mpjf.onrender.com/n8n/prepare-context",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"customer_id\": $json.customer_id,\n  \"message\": $json.message_text,\n  \"channel\": $json.channel\n} }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "df38a09d-b123-4a2d-a2e2-9fb9c2486504",
+      "name": "Prepare Context (Microservice)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -224,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "uhNdXmB3zf3qByRE",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip_ai }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "3c0de12f-f2bb-4e96-84a7-5985e19e455d",
+      "name": "Skip AI Call?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use cached or pre-defined response\nconst contextData = $input.first().json;\nconst messageData = $('Extract Message Data').first().json;\n\nreturn [{\n  json: {\n    response_text: contextData.cached_response,\n    intent: contextData.intent_analysis.intent,\n    action: 'cached_response',\n    order_data: null,\n    tokens_used: 0,\n    sender_id: messageData.sender_id,\n    customer_id: messageData.customer_id,\n    user_message: messageData.message_text,\n    start_time: messageData.start_time,\n    channel: messageData.channel\n  }\n}];"
+      },
+      "id": "590daf97-4d82-4fba-bbec-c22af44af8c5",
+      "name": "Use Cached Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response\nconst aiResponse = $input.first().json;\nconst messageData = $('Extract Message Data').first().json;\nconst contextData = $('Prepare Context (Microservice)').first().json;\n\nlet responseData;\n\ntry {\n  // Extract content from the specific OpenAI response structure\n  let content = aiResponse.output?.[0]?.content?.[0]?.text ||\n                aiResponse.choices?.[0]?.message?.content ||\n                aiResponse.content ||\n                aiResponse.message ||\n                aiResponse.text;\n  \n  console.log('Extracted content:', content);\n  \n  if (!content) {\n    throw new Error('No content found. Full response: ' + JSON.stringify(aiResponse));\n  }\n  \n  // Content is a JSON string, parse it\n  if (typeof content === 'string') {\n    content = content.trim();\n    \n    // Clean markdown formatting if present\n    if (content.startsWith('```json')) {\n      content = content.replace(/```json\\s*/g, '').replace(/```\\s*$/g, '');\n    } else if (content.startsWith('```')) {\n      content = content.replace(/```\\s*/g, '');\n    }\n    content = content.trim();\n    \n    console.log('Cleaned content:', content);\n    \n    // Parse JSON\n    responseData = JSON.parse(content);\n  } else if (typeof content === 'object' && content.text) {\n    // Already an object\n    responseData = content;\n  } else {\n    throw new Error('Content is unexpected type: ' + typeof content);\n  }\n  \n  console.log('Parsed responseData:', responseData);\n  \n  // Validate structure\n  if (!responseData.text) {\n    throw new Error('Missing text field. Got: ' + JSON.stringify(responseData));\n  }\n  if (!responseData.action) {\n    responseData.action = 'answer';\n  }\n  if (responseData.action === 'create_order' && !responseData.order_data) {\n    responseData.action = 'request_info';\n    responseData.order_data = null;\n  }\n  \n  console.log('Successfully parsed AI response');\n  \n} catch (e) {\n  console.log('ERROR parsing AI response:', e.message);\n  \n  // Fallback\n  responseData = {\n    text: 'عذراً، حدث خطأ. من فضلك حاول مرة أخرى.',\n    action: 'answer',\n    order_data: null\n  };\n  \n  console.log('Using fallback response');\n}\n\n// Extract tokens from usage field\nconst tokensUsed = aiResponse.usage?.total_tokens || \n                   aiResponse.usage?.output_tokens || \n                   0;\n\nreturn [{\n  json: {\n    response_text: responseData.text,\n    action: responseData.action,\n    order_data: responseData.order_data || null,\n    intent: contextData.intent_analysis.intent,\n    tokens_used: tokensUsed,\n    sender_id: messageData.sender_id,\n    customer_id: messageData.customer_id,\n    user_message: messageData.message_text,\n    start_time: messageData.start_time,\n    channel: messageData.channel\n  }\n}];"
+      },
+      "id": "cf2e3e65-8a03-4a61-8ed2-b30346b6a66a",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "d44f42f2-4950-468a-b2c8-68dcde982b6c",
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        576,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dm-service-mpjf.onrender.com/n8n/store-interaction",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"customer_id\": $json.customer_id,\n  \"channel\": $json.channel,\n  \"user_message\": $json.user_message,\n  \"ai_response\": $json.response_text,\n  \"intent\": $json.intent,\n  \"action\": $json.action,\n  \"order_data\": $json.order_data,\n  \"response_time_ms\": Date.now() - $json.start_time,\n  \"ai_tokens_used\": $json.tokens_used || 0\n} }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "63bf31e8-8c00-4d1c-bca0-ddf898a5e603",
+      "name": "Store Interaction (Microservice)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        800,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "uhNdXmB3zf3qByRE",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "value2": "create_order"
+            }
+          ]
+        }
+      },
+      "id": "2705a5c0-1807-4588-ba01-64305fb78f0d",
+      "name": "Should Create Order?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "orders"
+      },
+      "id": "2ff83f7b-9584-4a8b-954b-bcd3410a8e8e",
+      "name": "Create Order in Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        224
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "uKiB4acOBeJwlppc",
+          "name": "Supabase account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'success', message_sent: true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "2e1cac4a-8290-4a22-a8c9-840339d2ad99",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        432
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ecea8e4d-9c7b-4012-a473-5ecbf53e7881",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log error and send fallback response\nconst errorData = $input.first().json;\nconsole.error('Workflow Error:', JSON.stringify(errorData, null, 2));\n\nreturn [{\n  json: {\n    error: true,\n    message: 'عذراً، حدث خطأ في معالجة رسالتك. سنتواصل معك قريباً.',\n    timestamp: new Date().toISOString(),\n    original_error: errorData.message || 'Unknown'\n  }\n}];"
+      },
+      "id": "d34cb336-7c84-402d-ad7a-aa658839d853",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'error', error: $json.message } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ad59c8ad-e440-4100-9ff1-44f87659a4b7",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "4e372ed9-e877-4342-b211-5faa57916707",
+      "name": "Should Skip?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a friendly Egyptian clothing store assistant helping customers shop online. You speak naturally like an Egyptian, not formal or stiff.\n\nLANGUAGE & DIALECT RULES:\n1. **Match the customer's language EXACTLY:**\n   - If they write in Arabic → Respond in Egyptian Arabic dialect (عامية مصرية)\n   - If they write in Franco (Arabizi) → Respond in Franco using Egyptian style\n   - If they write in English → Respond in casual Egyptian English\n\n2. **Egyptian Arabic guidelines:**\n   - Use Egyptian dialect, NOT formal Arabic (MSA)\n   - Examples: \"عايز\" not \"أريد\", \"ازيك\" not \"كيف حالك\", \"كام\" not \"كم\"\n   - Common Egyptian words: حلو، كويس، تمام، ماشي، حاضر، أهلا، يلا\n   - End questions naturally: \"عايز كمان حاجة؟\" not \"هل تريد شيئاً آخر؟\"\n\n3. **Franco-Arabic (Arabizi) guidelines - CRITICAL MAPPINGS:**\n   - ح = 7 (example: 7ader حاضر, 7elw حلو, 7aga حاجة)\n   - ه = h (example: ahlan أهلان, howa هو, yh يه)\n   - خ = kh or 5 (example: khamsa خمسة, 5alas خلاص)\n   - ع = 3 (example: 3ayez عايز, 3ashan عشان, 3araby عربي)\n   - غ = gh (PREFER gh over 8: ghalee غالي, ghalty غلطي)\n   - ق = 2 or k/a (example: alby/2alby قلبي, olt/2olt قلت)\n   - ء = 2 (example: so2al سؤال, 2ah آه)\n   \n   - Write like Egyptians text: \"3ayez\" (عايز), \"ezayak\" (ازيك), \"7ader\" (حاضر), \"ahlan\" (أهلان)\n   - Mix naturally: \"Size M mawgood\" or \"el color da sold out\"\n   - Common phrases: \"tamam\", \"kwayyes\", \"mafeesh moshkela\", \"yalla\", \"a7san\", \"7elw awi\"\n   - Keep it casual: \"kbeer shwaya\" not \"kebeera shwaya\", \"rakamak\" not \"raqmak\"\n\n4. **Egyptian English:**\n   - Casual and friendly: \"yalla let's order\", \"ana ha-send you the details\"\n   - Mix Egyptian expressions when natural: \"khalas done\", \"tamam perfect\"\n   - Don't be too formal: \"Sure habiby!\" not \"Certainly, dear customer\"\n\nTONE & PERSONALITY:\n- Warm and helpful like a friend, not corporate\n- Use Egyptian expressions: \"تمام!\", \"يلا بينا!\", \"حلو قوي!\", \"7elw awi!\", \"khalas!\"\n- Be encouraging about products: \"ده تحفة!\" \"da gorgeous!\" \"perfect lekk!\"\n- Keep it conversational: \"عايز تاخد كمان واحد؟\" not \"Do you wish to purchase another item?\"\n\nEGYPTIAN CONVERSATIONAL PATTERNS:\n- Greetings: \"أهلا!\", \"ازيك!\", \"ahlan!\", \"hey!\" \n- Agreement: \"تمام\", \"ماشي\", \"حاضر\", \"7ader\", \"tamam\", \"perfect\"\n- Questions: \"محتاج حاجة تانية؟\", \"3ayez a3raflek 7aga?\", \"need anything else?\"\n- Encouragement: \"اختيار حلو!\", \"ekhteyar 7elw!\", \"nice choice!\"\n- Confirmation: \"يلا نكمل؟\", \"yalla nekammel?\", \"ready to order?\"\n\nORDER COLLECTION:\nWhen collecting order info, be natural:\n- Name: \"اسمك ايه؟\" / \"esmak eh?\" / \"what's your name?\"\n- Phone: \"رقم تليفونك؟\" / \"rakamak?\" / \"phone number?\"\n- Address: \"العنوان بتاعك؟\" / \"el 3enwan beta3ak?\" / \"delivery address?\"\n- Confirmation: \"تمام كده؟\" / \"tamam keda?\" / \"all good?\"\n\nPRODUCT DISCUSSION:\n- Sizes: Use Egyptian terms naturally: \"مقاس كبير شوية\" / \"size kbeer shwaya\" / \"size runs big\"\n- Colors: Mix naturally: \"أزرق غامق\" / \"azra2 ghame2\" / \"dark blue\"  \n- Availability: \"موجود\" / \"mawgood\" / \"available\", \"خلص\" / \"khalas\" / \"sold out\"\n- Prices: \"بـ599 جنيه\" / \"b 599 geneh\" / \"599 pounds\"\n\nCRITICAL TECHNICAL RULES:\n- Prices ALWAYS in Egyptian Pounds (EGP or جنيه/geneh)\n- Phone numbers MUST include +20 prefix\n- Response MUST be valid JSON only, NO markdown, NO ```json\n- Match customer's spelling style (if they write \"ezay\" don't write \"ezzay\")\n\nJSON RESPONSE FORMAT (REQUIRED):\n{\n  \"text\": \"Your natural Egyptian message here\",\n  \"action\": \"answer\" | \"request_info\" | \"create_order\",\n  \"order_data\": null or {complete order object}\n}\n\nACTIONS:\n- \"answer\": Answering questions, showing products, general chat\n- \"request_info\": Need more details (size? address? phone?)\n- \"create_order\": ALL info collected, ready to confirm order\n\nORDER_DATA FORMAT (only when action=\"create_order\"):\n{\n  \"product_id\": \"uuid-from-product-list\",\n  \"product_name\": \"Exact product name\",\n  \"size\": \"S/M/L/XL/etc\",\n  \"color\": \"color name\",\n  \"quantity\": 1,\n  \"total_price\": 599.00,\n  \"customer_name\": \"Full Name\",\n  \"phone\": \"+201234567890\",\n  \"address\": \"Complete street address, area, city\"\n}\n\nEXAMPLES OF GOOD RESPONSES:\n\nCustomer: \"3ayez jeans azra2\"\nResponse: {\"text\": \"ahlan! 3andena Blue Denim Jeans b 599 geneh, mawgood ma2asat men 30 le7ad 38. 3ayez ay ma2as?\", \"action\": \"answer\", \"order_data\": null}\n\nCustomer: \"how much is the black hoodie\"\nResponse: {\"text\": \"The black hoodie is 799 pounds, size S to XL available. Interested?\", \"action\": \"answer\", \"order_data\": null}\n\nCustomer: \"عايز أطلب البنطلون size 32\"\nResponse: {\"text\": \"tamam! hakhod mennak bas esmak w rakamak w el 3enwan 3ashan newaselholek\", \"action\": \"request_info\", \"order_data\": null}\n\nCustomer: \"7ader esmee Ahmed w rakamy 01234567890\"\nResponse: {\"text\": \"7elw ya Ahmed! fady el 3enwan beta3ak bas w ne2feln el order\", \"action\": \"request_info\", \"order_data\": null}\n\nREMEMBER:\n✅ Sound Egyptian, not formal or foreign\n✅ Match their language style exactly  \n✅ Be friendly and natural\n✅ JSON only, no markdown\n✅ Collect ALL info before create_order\n✅ ح=7, ه=h, غ=gh (not 8)"
+            },
+            {
+              "content": "=={{ $('Prepare Context (Microservice)').item.json.conversation_history }}\n\n{{ $('Prepare Context (Microservice)').item.json.relevant_products }}\n\n---\nCUSTOMER CONTEXT:\nIntent: {{ $('Prepare Context (Microservice)').item.json.intent_analysis.intent }}\nConfidence: {{ $('Prepare Context (Microservice)').item.json.intent_analysis.confidence }}\nExtracted Entities: {{ JSON.stringify($('Prepare Context (Microservice)').item.json.intent_analysis.entities) }}\nCustomer Metadata: {{ JSON.stringify($('Prepare Context (Microservice)').item.json.customer_metadata) }}\n---\n\nCustomer message: {{ $('Extract Message Data').item.json.message_text }}\n\nRespond with ONLY valid JSON (no markdown):"
+            }
+          ]
+        },
+        "simplify": false,
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 800,
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        160,
+        288
+      ],
+      "id": "7e36a3c1-9297-498f-94dc-d3ed446df85e",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "jF3F4OdmmThFWb9G",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.instagram.com/v21.0/me/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    \"recipient\": {\n      \"id\": $('Extract Message Data').first().json.sender_id\n    },\n    \"message\": {\n      \"text\": $('Merge Responses').first().json.response_text\n    }\n  }\n}}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "afd5da09-3197-4953-846d-6e5802e21000",
+      "name": "Send Instagram Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1824,
+        304
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "hIZrtz8UURERHidx",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e2e68c83-ff6d-4f03-b86c-0d1b31eb5eb6",
+              "leftValue": "={{ $('Extract Message Data').item.json.is_test_mode }}",
+              "rightValue": "false",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1584,
+        432
+      ],
+      "id": "e686f3a2-15d9-4148-ba8d-d505559e4242",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"test_mode\": true,\n  \"response_text\": \"{{$('Merge Responses').first().json.response_text}}\",\n  \"action\": \"{{$('Merge Responses').first().json.action}}\",\n  \"order_data\": \"{{$('Merge Responses').first().json.order_data}}\",\n  \"message\": \"Test mode - response not sent to Instagram\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1808,
+        560
+      ],
+      "id": "f1781da0-367c-40fe-8409-f3fe6648391c",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Instagram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Should Skip?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Context (Microservice)": {
+      "main": [
+        [
+          {
+            "node": "Skip AI Call?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip AI Call?": {
+      "main": [
+        [
+          {
+            "node": "Use Cached Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Cached Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Responses": {
+      "main": [
+        [
+          {
+            "node": "Store Interaction (Microservice)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Interaction (Microservice)": {
+      "main": [
+        [
+          {
+            "node": "Should Create Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Create Order?": {
+      "main": [
+        [
+          {
+            "node": "Create Order in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Order in Supabase": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Skip?": {
+      "main": [
+        [
+          {
+            "node": "Skip Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Context (Microservice)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Instagram Reply": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send Instagram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "23ef8e6d-f26e-41e1-867d-8dc6600f516b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e296f6ec2b157bf2f49ab0f131e889446eed9159b123c8bf792261fb25833d71"
+  },
+  "id": "Gf5VFhUqI1rckzMx",
+  "tags": []
+}

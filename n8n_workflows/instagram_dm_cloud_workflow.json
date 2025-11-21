@@ -1,0 +1,482 @@
+{
+  "name": "Instagram DM Handler - Cloud Production",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "=",
+        "path": "instagram-dm",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Instagram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "instagram-dm-handler"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.query['hub.mode'] }}",
+              "operation": "equals",
+              "value2": "subscribe"
+            }
+          ]
+        }
+      },
+      "id": "if-verification",
+      "name": "Is Webhook Verification?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Meta webhook verification\nconst query = $input.all()[0].json.query;\nconst mode = query['hub.mode'];\nconst token = query['hub.verify_token'];\nconst challenge = query['hub.challenge'];\n\n// Verify token (should match what you set in Meta Developer Console)\nconst expectedToken = $env.VERIFY_TOKEN || 'your_verify_token_12345';\n\nif (mode === 'subscribe' && token === expectedToken) {\n  // Return challenge as plain number\n  return [{ json: parseInt(challenge) }];\n} else {\n  throw new Error('Webhook verification failed: Invalid token');\n}"
+      },
+      "id": "verification-code",
+      "name": "Return Verification Challenge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-verification",
+      "name": "Respond to Meta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [840, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Instagram message data\nconst webhookData = $input.all()[0].json.body;\n\nif (!webhookData || !webhookData.entry) {\n  throw new Error('Invalid webhook data structure');\n}\n\nconst messages = [];\n\n// Process each entry\nfor (const entry of webhookData.entry) {\n  if (entry.messaging) {\n    for (const messagingEvent of entry.messaging) {\n      // Extract sender, recipient, and message\n      const sender = messagingEvent.sender?.id;\n      const recipient = messagingEvent.recipient?.id;\n      const message = messagingEvent.message;\n      const postback = messagingEvent.postback;\n      \n      if (sender && (message || postback)) {\n        messages.push({\n          customer_id: `instagram:${sender}`,\n          message: message?.text || postback?.title || '',\n          channel: 'instagram',\n          sender_id: sender,\n          recipient_id: recipient,\n          message_id: message?.mid || '',\n          timestamp: messagingEvent.timestamp,\n          is_postback: !!postback,\n          postback_payload: postback?.payload || null,\n          attachments: message?.attachments || []\n        });\n      }\n    }\n  }\n}\n\nif (messages.length === 0) {\n  // No messages to process, return empty\n  return [];\n}\n\nreturn messages.map(msg => ({ json: msg }));"
+      },
+      "id": "extract-message",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.RENDER_MICROSERVICE_URL }}/n8n/prepare-context",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.MICROSERVICE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "channel",
+              "value": "={{ $json.channel }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "allowUnauthorizedCerts": false,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "prepare-context",
+      "name": "Prepare Context (Microservice)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [840, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip_ai }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-skip-ai",
+      "name": "Skip AI?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1040, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use cached response (skip OpenAI call)\nconst contextData = $input.all()[0].json;\nconst extractedMessage = $node['Extract Message Data'].json;\n\nreturn [{\n  json: {\n    ai_response: contextData.cached_response,\n    customer_id: extractedMessage.customer_id,\n    sender_id: extractedMessage.sender_id,\n    intent: contextData.intent_analysis.intent,\n    action: 'cached_response',\n    skipped_ai: true\n  }\n}];"
+      },
+      "id": "use-cached",
+      "name": "Use Cached Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  model: 'gpt-4o-mini',\n  messages: [\n    {\n      role: 'system',\n      content: `You are an Egyptian customer service assistant for an online clothing store.\\n\\nLANGUAGE:\\nRespond in English by default. Adapt to match the customer's style when they use Arabic or Franco-Arabic, but keep it natural and don't force it. Sound like a real person, not a chatbot.\\n\\nGENDER:\\nStay neutral until you know. Adjust when it's clear.\\n\\nIf you make a mistake: Quick apology, fix it, continue.\\n\\nBE HUMAN:\\n- Talk naturally, not like an AI\\n- Actually read and answer their questions properly\\n- Don't ignore what they're asking about\\n- Be helpful and straightforward\\n- Professional but not robotic\\n\\nPRICES & ORDERS:\\n- Prices in Egyptian Pounds\\n- Phone numbers need +20\\n- To order: name, phone, address\\n\\nRESPONSE FORMAT - VALID JSON ONLY:\\n{\\n  \"text\": \"Your natural message\",\\n  \"action\": \"answer\" | \"request_info\" | \"create_order\",\\n  \"order_data\": null or {order object}\\n}\\n\\nACTION RULES - CRITICAL:\\n1. action = \"answer\" → General responses, product info, questions. NO order_data.\\n2. action = \"request_info\" → Need more info to complete order (missing size, address, etc). NO order_data yet.\\n3. action = \"create_order\" → Customer confirmed EVERYTHING (product, size, price, payment, address). MUST have order_data.\\n\\nIF YOU HAVE order_data WITH ALL FIELDS FILLED, YOU MUST SET action = \"create_order\"!\\n\\norder_data structure (only when action = \"create_order\"):\\n{\\n  \"product_name\": \"exact product name\",\\n  \"size\": number or string,\\n  \"price\": number in EGP,\\n  \"quantity\": number (default 1),\\n  \"payment_method\": \"cash on delivery\" or \"bank transfer\",\\n  \"address\": \"full delivery address\",\\n  \"phone\": \"+20xxxxxxxxxx\" (optional),\\n  \"notes\": \"any special requests\" (optional)\\n}\\n\\nEXAMPLES:\\n\\nCustomer: \"3ayez jeans azra2\"\\nResponse: {\"text\": \"Hey! Got blue jeans for 599 pounds, sizes 30-38 available. What size you need?\", \"action\": \"answer\", \"order_data\": null}\\n\\nCustomer: \"size 32, how much?\"\\nResponse: {\"text\": \"Blue jeans size 32 is 599 pounds. Want to order? I'll need your address and payment method.\", \"action\": \"request_info\", \"order_data\": null}\\n\\nCustomer: \"yes, cash on delivery, Alexandria Smouha\"\\nResponse: {\"text\": \"Perfect! Your order for blue jeans size 32 (599 EGP) is confirmed. Cash on delivery to Alexandria Smouha. We'll contact you soon!\", \"action\": \"create_order\", \"order_data\": {\"product_name\": \"blue jeans\", \"size\": 32, \"price\": 599, \"quantity\": 1, \"payment_method\": \"cash on delivery\", \"address\": \"Alexandria Smouha\"}}\\n\\nREMEMBER: If customer confirms order with all details (product, size, payment, address), MUST use action: \"create_order\" with order_data!\\n\\nCurrent intent: ${$json.intent_analysis.intent}\\n\\nRelevant Products:\\n${$json.relevant_products}\\n\\nConversation History:\\n${$json.conversation_history}\\n\\nCustomer Info: ${JSON.stringify($json.customer_metadata)}`\n    },\n    {\n      role: 'user',\n      content: $node['Extract Message Data'].json.message\n    }\n  ],\n  temperature: 0.7,\n  max_tokens: 800,\n  response_format: { type: 'json_object' }\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "call-openai",
+      "name": "Call OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1240, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI JSON response\nconst openaiResponse = $input.all()[0].json;\nconst contextData = $node['Prepare Context (Microservice)'].json;\nconst extractedMessage = $node['Extract Message Data'].json;\n\nlet responseData;\n\ntry {\n  // Extract content from OpenAI response\n  let content = openaiResponse.choices?.[0]?.message?.content || '';\n  \n  console.log('Raw AI response:', content);\n  \n  if (!content) {\n    throw new Error('No content in AI response');\n  }\n  \n  // Parse JSON response\n  if (typeof content === 'string') {\n    content = content.trim();\n    \n    // Clean markdown formatting if present\n    if (content.startsWith('```json')) {\n      content = content.replace(/```json\\s*/g, '').replace(/```\\s*$/g, '');\n    } else if (content.startsWith('```')) {\n      content = content.replace(/```\\s*/g, '');\n    }\n    content = content.trim();\n    \n    console.log('Cleaned content:', content);\n    \n    // Parse JSON\n    responseData = JSON.parse(content);\n  } else if (typeof content === 'object') {\n    responseData = content;\n  } else {\n    throw new Error('Unexpected content type: ' + typeof content);\n  }\n  \n  console.log('Parsed response data:', JSON.stringify(responseData));\n  \n  // Validate and fix structure\n  if (!responseData.text) {\n    throw new Error('Missing required field: text');\n  }\n  \n  // CRITICAL FIX: Auto-correct action when order_data is present\n  if (responseData.order_data && responseData.order_data !== null) {\n    // Check if order_data has required fields\n    const hasRequiredFields = responseData.order_data.product_name &&\n                               responseData.order_data.size &&\n                               responseData.order_data.price &&\n                               responseData.order_data.payment_method &&\n                               responseData.order_data.address;\n    \n    if (hasRequiredFields) {\n      // Force action to be create_order\n      if (responseData.action !== 'create_order') {\n        console.log(`AUTO-CORRECTING: action was \"${responseData.action}\" but order_data is complete. Setting to \"create_order\"`);\n        responseData.action = 'create_order';\n      }\n      \n      // Ensure quantity field\n      if (!responseData.order_data.quantity) {\n        responseData.order_data.quantity = 1;\n      }\n    } else {\n      // Incomplete order_data, should be request_info\n      console.log('Order data incomplete, setting action to request_info');\n      responseData.action = 'request_info';\n    }\n  } else {\n    // No order data\n    if (!responseData.action || responseData.action === 'create_order') {\n      responseData.action = 'answer';\n    }\n    responseData.order_data = null;\n  }\n  \n  console.log('Final action:', responseData.action);\n  console.log('Final order_data:', JSON.stringify(responseData.order_data));\n  \n} catch (e) {\n  console.error('ERROR parsing AI response:', e.message);\n  console.error('Full response:', JSON.stringify(openaiResponse));\n  \n  // Fallback\n  responseData = {\n    text: 'عذراً، حدث خطأ. من فضلك حاول مرة أخرى.',\n    action: 'answer',\n    order_data: null\n  };\n}\n\nconst tokensUsed = openaiResponse.usage?.total_tokens || 0;\n\nreturn [{\n  json: {\n    ai_response: responseData.text,\n    action: responseData.action,\n    order_data: responseData.order_data,\n    customer_id: extractedMessage.customer_id,\n    sender_id: extractedMessage.sender_id,\n    intent: contextData.intent_analysis.intent,\n    tokens_used: tokensUsed,\n    skipped_ai: false\n  }\n}];"
+      },
+      "id": "format-ai-response",
+      "name": "Format AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.RENDER_MICROSERVICE_URL }}/n8n/store-interaction",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.MICROSERVICE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "channel",
+              "value": "instagram"
+            },
+            {
+              "name": "user_message",
+              "value": "={{ $node['Extract Message Data'].json.message }}"
+            },
+            {
+              "name": "ai_response",
+              "value": "={{ $json.ai_response }}"
+            },
+            {
+              "name": "intent",
+              "value": "={{ $json.intent }}"
+            },
+            {
+              "name": "action",
+              "value": "={{ $json.action }}"
+            },
+            {
+              "name": "order_data",
+              "value": "={{ $json.order_data ? JSON.stringify($json.order_data) : null }}"
+            },
+            {
+              "name": "ai_tokens_used",
+              "value": "={{ $json.tokens_used || 0 }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "store-interaction",
+      "name": "Store Interaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1640, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/me/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $env.INSTAGRAM_PAGE_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  recipient: {\n    id: $node['Extract Message Data'].json.sender_id\n  },\n  message: {\n    text: $node['Store Interaction'].json.ai_response || $json.ai_response\n  },\n  messaging_type: 'RESPONSE'\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "send-instagram",
+      "name": "Send to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1840, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "={{ { status: 'success' } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2040, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Error handler - log and return graceful response\nconst error = $input.all()[0];\n\nconsole.error('Workflow error:', JSON.stringify(error, null, 2));\n\n// Try to extract sender info for logging\nlet senderId = 'unknown';\ntry {\n  senderId = $node['Extract Message Data'].json.sender_id;\n} catch (e) {\n  console.error('Could not extract sender_id');\n}\n\nreturn [{ \n  json: { \n    status: 'error',\n    sender_id: senderId,\n    error_message: error.message || 'Unknown error',\n    timestamp: new Date().toISOString()\n  } \n}];"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 700]
+    },
+    {
+      "parameters": {
+        "respondWith": "={{ { status: 'error' } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond 200 (Error)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1640, 700]
+    }
+  ],
+  "connections": {
+    "Instagram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is Webhook Verification?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Webhook Verification?": {
+      "main": [
+        [
+          {
+            "node": "Return Verification Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Verification Challenge": {
+      "main": [
+        [
+          {
+            "node": "Respond to Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Context (Microservice)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Context (Microservice)": {
+      "main": [
+        [
+          {
+            "node": "Skip AI?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip AI?": {
+      "main": [
+        [
+          {
+            "node": "Use Cached Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Cached Response": {
+      "main": [
+        [
+          {
+            "node": "Store Interaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Format AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format AI Response": {
+      "main": [
+        [
+          {
+            "node": "Store Interaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Interaction": {
+      "main": [
+        [
+          {
+            "node": "Send to Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Instagram": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": {
+      "trigger": "Error Handler"
+    }
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "Instagram",
+      "id": "instagram"
+    },
+    {
+      "name": "Production",
+      "id": "production"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-19T00:00:00.000Z",
+  "versionId": "cloud-production-v2-fixed"
+}

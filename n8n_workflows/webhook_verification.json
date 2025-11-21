@@ -1,0 +1,161 @@
+{
+  "name": "Instagram Webhook Verification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "instagram-dm",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-verify",
+      "name": "Webhook Verification",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "instagram-verification"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.query['hub.mode'] }}",
+              "operation": "equals",
+              "value2": "subscribe"
+            }
+          ]
+        }
+      },
+      "id": "if-verify",
+      "name": "Is Verification Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.query['hub.verify_token'] }}",
+              "operation": "equals",
+              "value2": "={{ $env.INSTAGRAM_VERIFY_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "id": "check-token",
+      "name": "Token Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "return-challenge",
+      "name": "Return Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Invalid verify token",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "invalid-token",
+      "name": "Invalid Token",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Not a verification request",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "not-verification",
+      "name": "Not Verification",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [650, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Verification": {
+      "main": [
+        [
+          {
+            "node": "Is Verification Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Verification Request?": {
+      "main": [
+        [
+          {
+            "node": "Token Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Valid?": {
+      "main": [
+        [
+          {
+            "node": "Return Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "instagram-dm-automation"
+  },
+  "tags": [
+    {
+      "name": "instagram",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}

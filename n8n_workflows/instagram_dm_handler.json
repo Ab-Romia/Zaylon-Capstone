@@ -1,0 +1,542 @@
+{
+  "name": "Instagram DM Automation with Microservice",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-dm",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Instagram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "instagram-dm-handler"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract message data from Meta webhook payload\nconst webhookData = $input.all()[0].json;\nconst startTime = Date.now();\n\n// Validate webhook structure\nif (!webhookData.entry || !webhookData.entry[0]) {\n  return [{ json: { error: 'Invalid webhook payload', skip: true } }];\n}\n\nconst entry = webhookData.entry[0];\nconst messaging = entry.messaging?.[0];\n\n// Check if this is a message event\nif (!messaging || !messaging.message) {\n  // Could be a delivery receipt, read receipt, etc.\n  return [{ json: { error: 'Not a message event', skip: true } }];\n}\n\nconst senderId = messaging.sender.id;\nconst recipientId = messaging.recipient.id;\nconst timestamp = messaging.timestamp;\nconst messageText = messaging.message.text || '';\nconst messageId = messaging.message.mid;\n\n// Skip if no text (could be attachment, sticker, etc.)\nif (!messageText.trim()) {\n  return [{ json: { error: 'No text in message', skip: true } }];\n}\n\n// Build customer ID (Instagram sender ID)\nconst customerId = `instagram:${senderId}`;\n\nreturn [{\n  json: {\n    customer_id: customerId,\n    sender_id: senderId,\n    recipient_id: recipientId,\n    message_text: messageText,\n    message_id: messageId,\n    timestamp: timestamp,\n    start_time: startTime,\n    channel: 'instagram',\n    skip: false\n  }\n}];"
+      },
+      "id": "extract-message",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-skip",
+      "name": "Should Skip?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'skipped', reason: $json.error }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "skip-response",
+      "name": "Skip Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 520]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MICROSERVICE_URL }}/n8n/prepare-context",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $json.customer_id }}\",\n  \"message\": \"{{ $json.message_text.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\",\n  \"channel\": \"{{ $json.channel }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "prepare-context",
+      "name": "Prepare Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "Microservice API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip_ai }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-skip-ai",
+      "name": "Skip AI?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use cached or pre-defined response\nconst contextData = $('Prepare Context').item.json;\nconst messageData = $('Extract Message Data').item.json;\n\nreturn [{\n  json: {\n    response_text: contextData.cached_response,\n    intent: contextData.intent_analysis.intent,\n    action: 'cached_response',\n    order_data: null,\n    tokens_used: 0,\n    sender_id: messageData.sender_id,\n    customer_id: messageData.customer_id,\n    user_message: messageData.message_text,\n    start_time: messageData.start_time\n  }\n}];"
+      },
+      "id": "use-cached",
+      "name": "Use Cached Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 160]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a helpful e-commerce assistant for an Egyptian clothing store. You help customers browse products, answer questions about pricing and availability, and help them place orders.\n\nIMPORTANT GUIDELINES:\n1. Respond in the same language the customer uses (Arabic, Franco-Arabic/Arabizi, or English)\n2. Be friendly, professional, and concise\n3. For orders, you MUST collect: full name, phone number (Egyptian format +20...), and complete delivery address\n4. Always confirm product details (size, color) before finalizing order\n5. Prices are in Egyptian Pounds (EGP)\n\n{{ $('Prepare Context').item.json.conversation_history }}\n\n{{ $('Prepare Context').item.json.relevant_products }}\n\n---\nCUSTOMER ANALYSIS:\nDetected Intent: {{ $('Prepare Context').item.json.intent_analysis.intent }}\nConfidence: {{ $('Prepare Context').item.json.intent_analysis.confidence }}\nExtracted Entities: {{ JSON.stringify($('Prepare Context').item.json.intent_analysis.entities) }}\nCustomer Preferred Language: {{ $('Prepare Context').item.json.customer_metadata.preferred_language }}\nTotal Previous Interactions: {{ $('Prepare Context').item.json.customer_metadata.total_interactions }}\nKnown Customer Name: {{ $('Prepare Context').item.json.customer_metadata.name || 'Unknown' }}\nKnown Phone: {{ $('Prepare Context').item.json.customer_metadata.phone || 'Unknown' }}\n---\n\nRespond ONLY with a valid JSON object in this exact format (no markdown, no explanation):\n{\n  \"text\": \"Your response message to the customer\",\n  \"action\": \"answer\",\n  \"order_data\": null\n}\n\nWhere action can be:\n- \"answer\" - General response or information\n- \"request_info\" - Asking customer for more details\n- \"create_order\" - Ready to create order (only when you have ALL required info)\n\nIf action is \"create_order\", order_data must be:\n{\n  \"product_id\": \"uuid-from-product-list\",\n  \"product_name\": \"Product Name\",\n  \"size\": \"M\",\n  \"color\": \"blue\",\n  \"quantity\": 1,\n  \"total_price\": 599.00,\n  \"customer_name\": \"Customer Full Name\",\n  \"phone\": \"+201234567890\",\n  \"address\": \"Full delivery address\"\n}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 600
+        }
+      },
+      "id": "openai-chat",
+      "name": "OpenAI Chat",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.3,
+      "position": [1340, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response\nconst aiResponse = $input.first().json;\nconst messageData = $('Extract Message Data').item.json;\nconst contextData = $('Prepare Context').item.json;\n\nlet responseData;\ntry {\n  // Get the content from OpenAI response\n  let content = aiResponse.message?.content || \n                aiResponse.choices?.[0]?.message?.content || \n                '';\n  \n  // Clean up markdown if present\n  content = content.trim();\n  if (content.startsWith('```json')) {\n    content = content.slice(7);\n  }\n  if (content.startsWith('```')) {\n    content = content.slice(3);\n  }\n  if (content.endsWith('```')) {\n    content = content.slice(0, -3);\n  }\n  content = content.trim();\n  \n  // Parse JSON\n  responseData = JSON.parse(content);\n  \n  // Validate required fields\n  if (!responseData.text) {\n    throw new Error('Missing text field');\n  }\n  if (!responseData.action) {\n    responseData.action = 'answer';\n  }\n  if (!responseData.order_data) {\n    responseData.order_data = null;\n  }\n} catch (e) {\n  // Fallback if parsing fails\n  console.error('Failed to parse AI response:', e.message);\n  responseData = {\n    text: aiResponse.message?.content || 'Sorry, I encountered an issue. Please try again.',\n    action: 'answer',\n    order_data: null\n  };\n}\n\nreturn [{\n  json: {\n    response_text: responseData.text,\n    action: responseData.action,\n    order_data: responseData.order_data,\n    intent: contextData.intent_analysis.intent,\n    tokens_used: aiResponse.usage?.total_tokens || 0,\n    sender_id: messageData.sender_id,\n    customer_id: messageData.customer_id,\n    user_message: messageData.message_text,\n    start_time: messageData.start_time\n  }\n}];"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "merge-responses",
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1780, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MICROSERVICE_URL }}/n8n/store-interaction",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $json.customer_id }}\",\n  \"channel\": \"instagram\",\n  \"user_message\": \"{{ $json.user_message.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\",\n  \"ai_response\": \"{{ $json.response_text.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\",\n  \"intent\": \"{{ $json.intent }}\",\n  \"action\": \"{{ $json.action }}\",\n  \"order_data\": {{ $json.order_data ? JSON.stringify($json.order_data) : 'null' }},\n  \"response_time_ms\": {{ Date.now() - $json.start_time }},\n  \"ai_tokens_used\": {{ $json.tokens_used || 0 }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "store-interaction",
+      "name": "Store Interaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "Microservice API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $('Merge Responses').item.json.action }}",
+              "operation": "equals",
+              "value2": "create_order"
+            }
+          ]
+        }
+      },
+      "id": "check-create-order",
+      "name": "Create Order?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2220, 280]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableId": "orders",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldName": "product_id",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.product_id }}"
+            },
+            {
+              "fieldName": "product_name",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.product_name }}"
+            },
+            {
+              "fieldName": "size",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.size }}"
+            },
+            {
+              "fieldName": "color",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.color }}"
+            },
+            {
+              "fieldName": "quantity",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.quantity }}"
+            },
+            {
+              "fieldName": "total_price",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.total_price }}"
+            },
+            {
+              "fieldName": "customer_name",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.customer_name }}"
+            },
+            {
+              "fieldName": "customer_phone",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.phone }}"
+            },
+            {
+              "fieldName": "delivery_address",
+              "fieldValue": "={{ $('Merge Responses').item.json.order_data.address }}"
+            },
+            {
+              "fieldName": "status",
+              "fieldValue": "pending"
+            },
+            {
+              "fieldName": "instagram_user",
+              "fieldValue": "={{ $('Merge Responses').item.json.customer_id }}"
+            }
+          ]
+        }
+      },
+      "id": "create-order",
+      "name": "Create Order in Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2440, 160],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v18.0/me/messages?access_token={{ $env.PAGE_ACCESS_TOKEN }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": {\n    \"id\": \"{{ $('Merge Responses').item.json.sender_id }}\"\n  },\n  \"message\": {\n    \"text\": \"{{ $('Merge Responses').item.json.response_text.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\"\n  }\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "send-instagram-reply",
+      "name": "Send Instagram Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2660, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', message_sent: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2880, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update product stock after order\nconst orderData = $('Merge Responses').item.json.order_data;\nif (orderData && orderData.product_id) {\n  // You can add stock update logic here\n  // Or handle it in a separate workflow\n}\n\nreturn [$input.first()];"
+      },
+      "id": "update-stock",
+      "name": "Update Stock (Optional)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 160]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Error processing Instagram DM: {{ $json.error || 'Unknown error' }}"
+      },
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log error for debugging\nconst errorData = $input.first().json;\nconsole.error('Instagram DM Error:', JSON.stringify(errorData, null, 2));\n\nreturn [{\n  json: {\n    error: true,\n    message: errorData.errorMessage || 'Unknown error',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-error",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 600]
+    }
+  ],
+  "connections": {
+    "Instagram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Should Skip?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Skip?": {
+      "main": [
+        [
+          {
+            "node": "Skip Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Context": {
+      "main": [
+        [
+          {
+            "node": "Skip AI?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip AI?": {
+      "main": [
+        [
+          {
+            "node": "Use Cached Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Cached Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Responses": {
+      "main": [
+        [
+          {
+            "node": "Store Interaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Interaction": {
+      "main": [
+        [
+          {
+            "node": "Create Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Order?": {
+      "main": [
+        [
+          {
+            "node": "Create Order in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Instagram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Order in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Update Stock (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Stock (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Send Instagram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Instagram Reply": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "instagram-dm-automation"
+  },
+  "tags": [
+    {
+      "name": "instagram",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "automation",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}

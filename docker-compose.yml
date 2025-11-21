@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecommerce_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecommerce}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecommerce_password}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_dm}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecommerce}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce_network
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    container_name: ecommerce_qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce_network
+
+  # E-commerce DM Microservice
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecommerce_dm_service
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ecommerce}:${POSTGRES_PASSWORD:-ecommerce_password}@postgres:5432/${POSTGRES_DB:-ecommerce_dm}
+
+      # API Security
+      API_KEY: ${API_KEY:-your-secret-api-key}
+
+      # RAG System
+      QDRANT_URL: http://qdrant:6333
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      USE_LOCAL_EMBEDDINGS: ${USE_LOCAL_EMBEDDINGS:-false}
+      ENABLE_SEMANTIC_SEARCH: ${ENABLE_SEMANTIC_SEARCH:-true}
+      ENABLE_KNOWLEDGE_BASE: ${ENABLE_KNOWLEDGE_BASE:-true}
+      ENABLE_HYBRID_SEARCH: ${ENABLE_HYBRID_SEARCH:-true}
+
+      # App Settings
+      DEBUG: ${DEBUG:-false}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - ecommerce_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+
+networks:
+  ecommerce_network:
+    driver: bridge
