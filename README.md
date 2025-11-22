@@ -329,8 +329,6 @@ Your service will be available at: `https://ecommerce-dm-service.onrender.com`
 
 **Note:** Free tier sleeps after 15 min of inactivity. Use https://uptimerobot.com to ping `/health` every 14 minutes.
 
-See `DEPLOYMENT_OPTIONS.md` for more alternatives (Render (deployed), Koyeb, etc.).
-
 ### Docker Deployment
 
 ```bash
