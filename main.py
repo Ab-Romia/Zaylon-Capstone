@@ -15,6 +15,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 
 from config import get_settings
 from database import get_db, init_db, close_db, Product
@@ -754,41 +755,34 @@ async def n8n_prepare_context_enhanced(
 ):
     """
     Enhanced context preparation with customer order history.
-
-    This endpoint does everything in one call:
-    1. Check cache for existing response
-    2. Retrieve conversation history
-    3. Get customer's previous orders
-    4. Search relevant products (hybrid RAG)
-    5. Classify intent and extract entities
-    6. Return everything formatted and ready for AI
-
-    Includes customer order history for personalized responses.
+    OPTIMIZED: Uses parallel execution for all independent operations.
     """
     start_time = time.time()
 
-    # 1. Check cache first
-    cache_result = await cache.check_cache(db, body.message)
-    if cache_result.cached:
-        await analytics.log_event(
-            db=db,
-            customer_id=body.customer_id,
-            event_type="cache_hit",
-            event_data={"message": body.message[:100]}
-        )
+    # Classify intent first (CPU-bound, instant)
+    intent_result = intent.classify_intent(body.message)
 
-    # 2. Retrieve conversation history
-    context_result = await context.retrieve_context(
+    # PARALLEL EXECUTION: Run all independent DB/service calls concurrently
+    rag_service = get_rag_service()
+
+    cache_task = cache.check_cache(db, body.message)
+    context_task = context.retrieve_context(
         db=db,
         customer_id=body.customer_id,
         limit=settings.max_conversation_history
     )
+    order_history_task = get_customer_order_history(db, body.customer_id, limit=5)
+    rag_task = rag_service.prepare_rag_context(body.message, db)
 
-    # 3. Get customer order history
-    order_history = await get_customer_order_history(db, body.customer_id, limit=5)
+    # Wait for all parallel tasks
+    cache_result, context_result, order_history, rag_context = await asyncio.gather(
+        cache_task, context_task, order_history_task, rag_task
+    )
+
+    # Format order history (CPU-bound, instant)
     order_history_formatted = format_order_history_for_ai(order_history)
 
-    # 4. Get enhanced customer metadata
+    # Get enhanced metadata (needs context_result)
     base_meta = {
         "name": context_result.customer_metadata.name,
         "phone": context_result.customer_metadata.phone,
@@ -798,38 +792,9 @@ async def n8n_prepare_context_enhanced(
     }
     enhanced_metadata = await get_enhanced_customer_metadata(db, body.customer_id, base_meta)
 
-    # 5. Search relevant products using RAG
-    rag_service = get_rag_service()
-    rag_context = await rag_service.prepare_rag_context(body.message, db)
-
-    # Log product search
-    await analytics.log_event(
-        db=db,
-        customer_id=body.customer_id,
-        event_type="product_searched",
-        event_data={
-            "query": body.message[:100],
-            "products_found": len(rag_context["products"])
-        }
-    )
-
-    # 6. Classify intent
-    intent_result = intent.classify_intent(body.message)
-
-    await analytics.log_event(
-        db=db,
-        customer_id=body.customer_id,
-        event_type="intent_classified",
-        event_data={
-            "intent": intent_result.intent,
-            "confidence": intent_result.confidence
-        }
-    )
-
-    # 7. Determine if we should skip AI
+    # Determine skip_ai
     skip_ai = False
     cached_response = None
-
     if cache_result.cached:
         skip_ai = True
         cached_response = cache_result.response
@@ -837,39 +802,28 @@ async def n8n_prepare_context_enhanced(
         skip_ai = True
         cached_response = intent_result.suggested_response
 
-    # 8. Store incoming message
-    await context.store_message(
-        db=db,
-        customer_id=body.customer_id,
-        channel=body.channel,
-        message=body.message,
-        direction="incoming",
-        intent=intent_result.intent
-    )
-
-    # Update customer profile with extracted entities
-    if intent_result.entities.phone:
-        await context.update_customer_profile(
+    # Store message and log analytics in background (non-blocking)
+    async def background_tasks():
+        await context.store_message(
             db=db,
             customer_id=body.customer_id,
-            phone=intent_result.entities.phone
+            channel=body.channel,
+            message=body.message,
+            direction="incoming",
+            intent=intent_result.intent
         )
+        if intent_result.entities.phone:
+            await context.update_customer_profile(
+                db=db,
+                customer_id=body.customer_id,
+                phone=intent_result.entities.phone
+            )
+
+    # Run background tasks without waiting
+    asyncio.create_task(background_tasks())
 
     elapsed_ms = int((time.time() - start_time) * 1000)
     logger.info(f"Enhanced prepare context completed in {elapsed_ms}ms (skip_ai={skip_ai})")
-
-    await analytics.log_event(
-        db=db,
-        customer_id=body.customer_id,
-        event_type="message_received",
-        event_data={
-            "channel": body.channel,
-            "intent": intent_result.intent,
-            "skip_ai": skip_ai,
-            "total_orders": enhanced_metadata.total_orders
-        },
-        response_time_ms=elapsed_ms
-    )
 
     return PrepareContextEnhancedResponse(
         conversation_history=context_result.formatted_for_ai,

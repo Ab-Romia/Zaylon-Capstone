@@ -175,29 +175,26 @@ class RAGService:
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Hybrid search combining semantic and keyword approaches.
-
-        Args:
-            query: User query
-            db: Database session
-            limit: Maximum number of results
-
-        Returns:
-            Tuple of (products list, metadata dict)
+        OPTIMIZED: Runs semantic and keyword search in parallel.
         """
+        import asyncio
         detected_language = detect_language(query)
 
-        # Perform both searches
-        semantic_results = []
-        keyword_results = []
+        # PARALLEL EXECUTION: Run both searches concurrently
+        async def empty_search():
+            return []
 
-        if self.settings.enable_semantic_search:
-            semantic_results = await self.search_products_semantic(
-                query, db, limit=limit,
-                min_score=self.settings.rag_similarity_threshold
-            )
+        semantic_task = (
+            self.search_products_semantic(query, db, limit=limit, min_score=self.settings.rag_similarity_threshold)
+            if self.settings.enable_semantic_search
+            else empty_search()
+        )
+        keyword_task = self.search_products_keyword(query, db, limit=limit)
 
-        # Always do keyword search as fallback
-        keyword_results = await self.search_products_keyword(query, db, limit=limit)
+        results = await asyncio.gather(semantic_task, keyword_task, return_exceptions=True)
+
+        semantic_results = results[0] if not isinstance(results[0], Exception) else []
+        keyword_results = results[1] if not isinstance(results[1], Exception) else []
 
         # Merge and deduplicate results
         seen_ids = set()

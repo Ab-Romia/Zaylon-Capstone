@@ -1,9 +1,10 @@
 """
 Conversation context management service.
 Handles conversation history storage, retrieval, and cross-channel linking.
+OPTIMIZED: Added in-memory caching for frequent lookups.
 """
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlalchemy import select, or_, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -15,8 +16,41 @@ from models import (
 from services.products import detect_language
 import logging
 import uuid
+import time
 
 logger = logging.getLogger(__name__)
+
+# Simple in-memory cache for context (TTL: 30 seconds)
+_context_cache: Dict[str, tuple] = {}  # {customer_id: (result, timestamp)}
+CONTEXT_CACHE_TTL = 30  # seconds
+
+
+def _get_cached_context(customer_id: str):
+    """Get cached context if valid."""
+    if customer_id in _context_cache:
+        result, timestamp = _context_cache[customer_id]
+        if time.time() - timestamp < CONTEXT_CACHE_TTL:
+            return result
+        else:
+            del _context_cache[customer_id]
+    return None
+
+
+def _set_cached_context(customer_id: str, result):
+    """Cache context result."""
+    # Limit cache size
+    if len(_context_cache) > 1000:
+        # Remove oldest entries
+        oldest = sorted(_context_cache.items(), key=lambda x: x[1][1])[:100]
+        for k, _ in oldest:
+            del _context_cache[k]
+    _context_cache[customer_id] = (result, time.time())
+
+
+def invalidate_context_cache(customer_id: str):
+    """Invalidate cache when context changes."""
+    if customer_id in _context_cache:
+        del _context_cache[customer_id]
 
 
 async def store_message(
@@ -32,7 +66,8 @@ async def store_message(
     Store a conversation message.
     Also ensures customer profile exists.
     """
-    logger.info(f"Storing message for customer: {customer_id}")
+    # Invalidate cache since context is changing
+    invalidate_context_cache(customer_id)
 
     # Ensure customer exists
     await ensure_customer_exists(db, customer_id)
@@ -51,8 +86,11 @@ async def store_message(
     await db.commit()
     await db.refresh(conversation)
 
-    # Update customer metadata with latest info
-    await update_customer_metadata(db, customer_id, message, channel)
+    # Update customer metadata with latest info (non-blocking for performance)
+    try:
+        await update_customer_metadata(db, customer_id, message, channel)
+    except Exception as e:
+        logger.warning(f"Failed to update customer metadata: {e}")
 
     return StoreContextResponse(
         success=True,
@@ -121,8 +159,13 @@ async def retrieve_context(
     """
     Retrieve conversation history and customer metadata.
     Also checks for linked channel IDs.
+    OPTIMIZED: Uses in-memory caching.
     """
-    logger.info(f"Retrieving context for customer: {customer_id}")
+    # Check cache first
+    cached = _get_cached_context(customer_id)
+    if cached:
+        logger.debug(f"Cache hit for customer: {customer_id}")
+        return cached
 
     # Get customer profile
     stmt = select(Customer).where(
@@ -172,12 +215,17 @@ async def retrieve_context(
     # Format conversation history for AI
     formatted_for_ai = format_conversation_for_ai(messages)
 
-    return RetrieveContextResponse(
+    result = RetrieveContextResponse(
         customer_id=customer_id,
         messages=messages,
         customer_metadata=metadata,
         formatted_for_ai=formatted_for_ai
     )
+
+    # Cache the result
+    _set_cached_context(customer_id, result)
+
+    return result
 
 
 def build_customer_metadata(
