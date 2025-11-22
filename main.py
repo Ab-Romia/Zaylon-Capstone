@@ -755,34 +755,28 @@ async def n8n_prepare_context_enhanced(
 ):
     """
     Enhanced context preparation with customer order history.
-    OPTIMIZED: Uses parallel execution for all independent operations.
+    OPTIMIZED: Removed analytics logging, streamlined DB queries.
     """
     start_time = time.time()
 
     # Classify intent first (CPU-bound, instant)
     intent_result = intent.classify_intent(body.message)
 
-    # PARALLEL EXECUTION: Run all independent DB/service calls concurrently
-    rag_service = get_rag_service()
+    # Check cache first (quick operation)
+    cache_result = await cache.check_cache(db, body.message)
 
-    cache_task = cache.check_cache(db, body.message)
-    context_task = context.retrieve_context(
+    # Retrieve context (single DB call with joins)
+    context_result = await context.retrieve_context(
         db=db,
         customer_id=body.customer_id,
         limit=settings.max_conversation_history
     )
-    order_history_task = get_customer_order_history(db, body.customer_id, limit=5)
-    rag_task = rag_service.prepare_rag_context(body.message, db)
 
-    # Wait for all parallel tasks
-    cache_result, context_result, order_history, rag_context = await asyncio.gather(
-        cache_task, context_task, order_history_task, rag_task
-    )
-
-    # Format order history (CPU-bound, instant)
+    # Get order history
+    order_history = await get_customer_order_history(db, body.customer_id, limit=5)
     order_history_formatted = format_order_history_for_ai(order_history)
 
-    # Get enhanced metadata (needs context_result)
+    # Get enhanced metadata
     base_meta = {
         "name": context_result.customer_metadata.name,
         "phone": context_result.customer_metadata.phone,
@@ -791,6 +785,10 @@ async def n8n_prepare_context_enhanced(
         "linked_channels": context_result.customer_metadata.linked_channels
     }
     enhanced_metadata = await get_enhanced_customer_metadata(db, body.customer_id, base_meta)
+
+    # RAG search (can run after DB operations)
+    rag_service = get_rag_service()
+    rag_context = await rag_service.prepare_rag_context(body.message, db)
 
     # Determine skip_ai
     skip_ai = False
@@ -802,25 +800,23 @@ async def n8n_prepare_context_enhanced(
         skip_ai = True
         cached_response = intent_result.suggested_response
 
-    # Store message and log analytics in background (non-blocking)
-    async def background_tasks():
-        await context.store_message(
+    # Store incoming message (must complete before response)
+    await context.store_message(
+        db=db,
+        customer_id=body.customer_id,
+        channel=body.channel,
+        message=body.message,
+        direction="incoming",
+        intent=intent_result.intent
+    )
+
+    # Update customer profile if phone extracted
+    if intent_result.entities.phone:
+        await context.update_customer_profile(
             db=db,
             customer_id=body.customer_id,
-            channel=body.channel,
-            message=body.message,
-            direction="incoming",
-            intent=intent_result.intent
+            phone=intent_result.entities.phone
         )
-        if intent_result.entities.phone:
-            await context.update_customer_profile(
-                db=db,
-                customer_id=body.customer_id,
-                phone=intent_result.entities.phone
-            )
-
-    # Run background tasks without waiting
-    asyncio.create_task(background_tasks())
 
     elapsed_ms = int((time.time() - start_time) * 1000)
     logger.info(f"Enhanced prepare context completed in {elapsed_ms}ms (skip_ai={skip_ai})")
