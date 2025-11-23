@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # App Info
     app_name: str = "E-commerce DM Microservice"
-    app_version: str = "2.0.0"  # Updated for RAG support
+    app_version: str = "2.1.0"  # Major refactor with modular architecture
     debug: bool = False
 
     # RAG System Settings

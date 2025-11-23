@@ -4,8 +4,7 @@ Handles order creation, customer management, and order history retrieval.
 """
 import logging
 import uuid
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import List, Dict, Any
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +14,7 @@ from models import (
     CustomerOrderHistory, EnhancedCustomerMetadata
 )
 from services.context import ensure_customer_exists, update_customer_profile
+from core.enums import OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +62,17 @@ async def create_order(
                 message=f"Not enough stock. Available: {product.stock_count}, Requested: {request.quantity}"
             )
 
-        # Validate size and color
-        if request.size not in (product.sizes or []):
+        # Validate size and color (case-insensitive)
+        available_sizes = [s.lower() for s in (product.sizes or [])]
+        if request.size.lower() not in available_sizes:
             return CreateOrderResponse(
                 success=False,
                 error="invalid_size",
                 message=f"Size '{request.size}' not available. Available sizes: {', '.join(product.sizes or [])}"
             )
 
-        if request.color.lower() not in [c.lower() for c in (product.colors or [])]:
+        available_colors = [c.lower() for c in (product.colors or [])]
+        if request.color.lower() not in available_colors:
             return CreateOrderResponse(
                 success=False,
                 error="invalid_color",
@@ -99,7 +101,7 @@ async def create_order(
             customer_name=request.customer_name,
             customer_phone=request.phone,
             delivery_address=request.address,
-            status="pending",
+            status=OrderStatus.PENDING.value,
             instagram_user=request.customer_id
         )
 
