@@ -371,13 +371,16 @@ Provide a complete, helpful response."""
         if hasattr(response, 'tool_calls') and response.tool_calls:
             from langchain_core.messages import ToolMessage
 
+            # First, add the assistant's message with tool calls to maintain conversation order
+            agent_messages.append(response)
+
             # Execute each tool call
             for tool_call in response.tool_calls:
                 tool_name = tool_call.get("name")
                 tool_args = tool_call.get("args", {})
                 tool_id = tool_call.get("id", str(len(tool_calls_info)))
 
-                logger.info(f"[SALES AGENT] Executing tool: {tool_name}")
+                logger.info(f"[SALES AGENT] Executing tool: {tool_name} with args: {tool_args}")
 
                 # Find and execute the tool
                 tool_result = None
@@ -385,14 +388,15 @@ Provide a complete, helpful response."""
                     if tool.name == tool_name:
                         try:
                             tool_result = await tool.ainvoke(tool_args)
-                            logger.info(f"[SALES AGENT] Tool {tool_name} succeeded")
+                            logger.info(f"[SALES AGENT] Tool {tool_name} succeeded: {str(tool_result)[:100]}")
                         except Exception as e:
                             tool_result = f"Tool execution failed: {str(e)}"
-                            logger.error(f"[SALES AGENT] Tool {tool_name} failed: {e}")
+                            logger.error(f"[SALES AGENT] Tool {tool_name} failed: {e}", exc_info=True)
                         break
 
                 if tool_result is None:
                     tool_result = f"Tool {tool_name} not found"
+                    logger.error(f"[SALES AGENT] Tool {tool_name} not found in SALES_TOOLS")
 
                 tool_calls_info.append({
                     "tool_name": tool_name,
@@ -401,14 +405,13 @@ Provide a complete, helpful response."""
                     "success": "failed" not in str(tool_result).lower()
                 })
 
-                # Add tool result to conversation
+                # Add tool result to conversation (AFTER the AIMessage with tool_calls)
                 agent_messages.append(ToolMessage(
                     content=str(tool_result),
                     tool_call_id=tool_id
                 ))
 
             # Call agent again with tool results to get final response
-            agent_messages.append(response)  # Add the assistant's message with tool calls
             final_response = await sales_agent.ainvoke(agent_messages)
             response_text = final_response.content
         else:
@@ -502,13 +505,16 @@ Provide a complete, helpful response."""
         if hasattr(response, 'tool_calls') and response.tool_calls:
             from langchain_core.messages import ToolMessage
 
+            # First, add the assistant's message with tool calls to maintain conversation order
+            agent_messages.append(response)
+
             # Execute each tool call
             for tool_call in response.tool_calls:
                 tool_name = tool_call.get("name")
                 tool_args = tool_call.get("args", {})
                 tool_id = tool_call.get("id", str(len(tool_calls_info)))
 
-                logger.info(f"[SUPPORT AGENT] Executing tool: {tool_name}")
+                logger.info(f"[SUPPORT AGENT] Executing tool: {tool_name} with args: {tool_args}")
 
                 # Find and execute the tool
                 tool_result = None
@@ -516,14 +522,15 @@ Provide a complete, helpful response."""
                     if tool.name == tool_name:
                         try:
                             tool_result = await tool.ainvoke(tool_args)
-                            logger.info(f"[SUPPORT AGENT] Tool {tool_name} succeeded")
+                            logger.info(f"[SUPPORT AGENT] Tool {tool_name} succeeded: {str(tool_result)[:100]}")
                         except Exception as e:
                             tool_result = f"Tool execution failed: {str(e)}"
-                            logger.error(f"[SUPPORT AGENT] Tool {tool_name} failed: {e}")
+                            logger.error(f"[SUPPORT AGENT] Tool {tool_name} failed: {e}", exc_info=True)
                         break
 
                 if tool_result is None:
                     tool_result = f"Tool {tool_name} not found"
+                    logger.error(f"[SUPPORT AGENT] Tool {tool_name} not found in SUPPORT_TOOLS")
 
                 tool_calls_info.append({
                     "tool_name": tool_name,
@@ -532,14 +539,13 @@ Provide a complete, helpful response."""
                     "success": "failed" not in str(tool_result).lower()
                 })
 
-                # Add tool result to conversation
+                # Add tool result to conversation (AFTER the AIMessage with tool_calls)
                 agent_messages.append(ToolMessage(
                     content=str(tool_result),
                     tool_call_id=tool_id
                 ))
 
             # Call agent again with tool results to get final response
-            agent_messages.append(response)  # Add the assistant's message with tool calls
             final_response = await support_agent.ainvoke(agent_messages)
             response_text = final_response.content
         else:
