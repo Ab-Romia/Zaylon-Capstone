@@ -7,7 +7,7 @@ import json
 from typing import Optional
 from langchain.tools import tool
 
-from database import get_db
+from database import async_session
 from models import CreateOrderRequest
 from services.orders import create_order, get_customer_order_history
 from core.enums import OrderStatus
@@ -56,7 +56,7 @@ async def create_order_tool(
     2. Size and color are valid
     3. Customer has provided: name, phone, and address
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             request = CreateOrderRequest(
                 customer_id=customer_id,
@@ -102,7 +102,7 @@ async def get_order_history_tool(customer_id: str, limit: int = 5) -> str:
     - "When did I last order?"
     - For return/exchange requests (need to reference past orders)
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             orders = await get_customer_order_history(db, customer_id, limit)
 
@@ -144,7 +144,7 @@ async def check_order_status_tool(customer_id: str, order_id: Optional[str] = No
     - "Has my order shipped?"
     - "When will my order arrive?"
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             orders = await get_customer_order_history(db, customer_id, limit=10)
 

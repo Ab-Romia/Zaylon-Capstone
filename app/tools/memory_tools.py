@@ -10,7 +10,7 @@ from langchain.tools import tool
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db, CustomerFact
+from database import async_session, CustomerFact
 
 
 @tool
@@ -36,7 +36,7 @@ async def get_customer_facts_tool(customer_id: str, fact_type: Optional[str] = N
     - style_preference: "casual"
     - budget_range: "100-200 EGP"
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             # Build query
             if fact_type:
@@ -119,7 +119,7 @@ async def save_customer_fact_tool(
     - Customer says "I love blue" → save fact_type="preference", fact_key="favorite_color", fact_value="blue"
     - You infer they prefer casual wear → save source="inferred", confidence=70
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             # Check if fact already exists
             stmt = select(CustomerFact).where(

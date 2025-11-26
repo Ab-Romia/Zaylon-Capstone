@@ -7,7 +7,7 @@ import json
 from typing import Optional
 from langchain.tools import tool
 
-from database import get_db
+from database import async_session
 from services import get_rag_service
 
 
@@ -90,7 +90,7 @@ async def semantic_product_search_tool(query: str, limit: int = 5, retry_on_poor
     If the first search returns results with low similarity scores (< 0.7),
     this tool will automatically rewrite the query and try again for better results.
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             rag_service = get_rag_service()
 

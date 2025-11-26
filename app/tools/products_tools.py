@@ -9,7 +9,7 @@ from langchain.tools import tool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services import products
-from database import get_db, Product
+from database import async_session, Product
 from sqlalchemy import select
 
 
@@ -30,7 +30,7 @@ async def search_products_tool(query: str, limit: int = 5) -> str:
     - Product search ("Show me blue jeans")
     - General browsing ("What products do you sell?")
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             result = await products.search_products(db=db, query=query, limit=limit)
 
@@ -74,7 +74,7 @@ async def get_product_details_tool(product_id: str) -> str:
     - Price of a specific item ("How much is product #123?")
     - Stock availability for a specific product
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             stmt = select(Product).where(Product.id == product_id)
             result = await db.execute(stmt)
@@ -118,7 +118,7 @@ async def check_product_availability_tool(product_name: str, size: Optional[str]
     - "Is this product in stock?"
     - "What sizes are available?"
     """
-    async for db in get_db():
+    async with async_session() as db:
         try:
             # Search for the product first
             result = await products.search_products(db=db, query=product_name, limit=3)
