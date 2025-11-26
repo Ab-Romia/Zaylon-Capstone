@@ -340,17 +340,21 @@ async def sales_agent_node(state: FlowinitState) -> Dict[str, Any]:
 
 {profile_context}
 
-**Available Tools**:
+**Available Tools** (YOU MUST USE THESE):
 - search_products_tool: Search for products by description
 - check_product_availability_tool: Check if product is in stock
 - create_order_tool: Create an order for the customer
 
-**Instructions**:
-1. Use tools to help the customer
-2. If customer preferences are known, use them proactively
-3. Be friendly and helpful
-4. If creating an order, ensure you have all required info (name, phone, address, size, color)
-5. Speak in a mix of English and Arabic if appropriate for the customer
+**CRITICAL INSTRUCTIONS**:
+1. **ALWAYS use search_products_tool when customer asks about products** - You do NOT have product information without calling tools
+2. **ALWAYS use check_product_availability_tool to verify stock** before recommending products
+3. **ALWAYS use create_order_tool when customer wants to buy** - Never tell them to "visit the website"
+4. If customer preferences are known, use them in tool calls (e.g., search for their preferred size/color)
+5. Be friendly and helpful
+6. If creating an order, ensure you have all required info (name, phone, address, size, color)
+7. Speak in a mix of English and Arabic if appropriate for the customer
+
+**IMPORTANT**: You CANNOT answer questions about products without using tools. Always call the appropriate tool first, then respond based on the results.
 
 Provide a complete, helpful response."""
 
@@ -467,18 +471,21 @@ async def support_agent_node(state: FlowinitState) -> Dict[str, Any]:
 
 {profile_context}
 
-**Available Tools**:
+**Available Tools** (YOU MUST USE THESE):
 - search_knowledge_base_tool: Search FAQs and policies
 - get_order_history_tool: Retrieve customer's order history
 - check_order_status_tool: Check status of specific orders
 - semantic_product_search_tool: Search products semantically (includes auto-retry if needed)
 
-**Instructions**:
-1. Be empathetic and helpful
-2. Use knowledge base to provide accurate information
-3. If customer mentions orders, check their history
-4. The semantic search tool has self-correction built-in - it will automatically retry if first search fails
-5. Provide clear, concise answers
+**CRITICAL INSTRUCTIONS**:
+1. **ALWAYS use search_knowledge_base_tool for policy questions** - You do NOT have policy information without calling this tool
+2. **ALWAYS use get_order_history_tool when customer asks about their orders** - Never guess or make up order information
+3. **ALWAYS use check_order_status_tool to track specific orders** - Call this whenever customer mentions tracking or status
+4. **Use semantic_product_search_tool for product searches** - This tool has self-correction built-in
+5. Be empathetic and helpful
+6. Provide clear, concise answers
+
+**IMPORTANT**: You CANNOT answer questions about policies, orders, or tracking without using tools. Always call the appropriate tool first, then respond based on the results.
 
 Provide a complete, helpful response."""
 
