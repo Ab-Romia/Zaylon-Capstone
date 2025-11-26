@@ -1,0 +1,31 @@
+test_id,input_message,expected_intent,expected_agent,expected_tool,difficulty,language,notes
+1,I want to buy a red hoodie in size L,purchase,sales,search_products_tool,Easy,English,Simple product search
+2,Show me all available hoodies,product_inquiry,sales,search_products_tool,Easy,English,Basic product listing
+3,What are your return policies?,general_inquiry,support,search_knowledge_base_tool,Easy,English,FAQ question
+4,Where is my order?,order_tracking,support,check_order_status_tool,Easy,English,Order status check
+5,"I want to return my last order and buy a blue shirt",mixed,sales,get_order_history_tool|search_products_tool,Hard,English,Mixed intent - support + sales
+6,Do you have that hoodie in my size?,product_inquiry,sales,search_products_tool|get_customer_facts_tool,Hard,English,Requires memory retrieval
+7,عايز بنطلون اسود مقاس كبير,purchase,sales,search_products_tool,Medium,Arabic,Arabic product search
+8,3ayez jeans azra2 size M,purchase,sales,search_products_tool,Medium,Franco-Arabic,Franco-Arabic product query
+9,What colors do you have in hoodies?,product_inquiry,sales,search_products_tool,Easy,English,Variant inquiry
+10,I need help with my recent purchase,general_inquiry,support,get_order_history_tool,Medium,English,Support request
+11,Can I change my order?,order_modification,support,check_order_status_tool,Medium,English,Order modification request
+12,Show me cheap t-shirts,product_inquiry,sales,search_products_tool,Easy,English,Price-based search
+13,I received a damaged item,complaint,support,search_knowledge_base_tool,Medium,English,Complaint handling
+14,"Tell me about shipping times, and also I want a black jacket",mixed,sales,search_knowledge_base_tool|search_products_tool,Hard,English,Mixed FAQ + purchase
+15,Do you ship to Cairo?,general_inquiry,support,search_knowledge_base_tool,Easy,English,Shipping inquiry
+16,عايز اعرف سعر الهودي الاحمر,price_inquiry,sales,search_products_tool,Medium,Arabic,Arabic price inquiry
+17,3ayz a3ml order lel blue shirt size L,purchase,sales,search_products_tool|create_order_tool,Hard,Franco-Arabic,Franco-Arabic order creation
+18,I prefer red colors and size M,preference,sales,save_customer_fact_tool,Easy,English,Memory storage scenario
+19,Show me products in my favorite color,product_inquiry,sales,get_customer_facts_tool|search_products_tool,Hard,English,Memory retrieval + search
+20,What's the status of order #12345?,order_tracking,support,check_order_status_tool,Easy,English,Specific order tracking
+21,فين طلبي؟,order_tracking,support,check_order_status_tool,Medium,Arabic,Arabic order tracking
+22,How do I cancel my order?,general_inquiry,support,search_knowledge_base_tool,Easy,English,Cancellation FAQ
+23,I want comfortable sport clothes,product_inquiry,sales,search_products_tool,Medium,English,Vague query - self-correction test
+24,"Thanks for your help, bye!",thanks,support,none,Easy,English,Conversation closing
+25,What payment methods do you accept?,general_inquiry,support,search_knowledge_base_tool,Easy,English,Payment FAQ
+26,I ordered a shirt but want pants instead,order_modification,support,get_order_history_tool|search_products_tool,Hard,English,Order change request
+27,Show me your best sellers,product_inquiry,sales,search_products_tool,Easy,English,Popular products inquiry
+28,عايز احسن بنطلون عندكو,product_inquiry,sales,search_products_tool,Medium,Arabic,Arabic best product inquiry
+29,Can you recommend something for winter?,product_inquiry,sales,search_products_tool,Medium,English,Seasonal recommendation
+30,I want to reorder my last purchase,purchase,sales,get_order_history_tool|search_products_tool,Hard,English,Reorder scenario with memory
