@@ -20,16 +20,16 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Initialize LLM for agents
+# Initialize LLM for agents - use gpt-4o for reliable tool calling
 llm = ChatOpenAI(
-    model="gpt-4o-mini",  # Cost-effective for routing
-    temperature=0.1,
+    model="gpt-4o",  # Better function calling than mini
+    temperature=0,
     api_key=settings.openai_api_key
 )
 
 # Initialize LLM for supervisor with structured output
 supervisor_llm = ChatOpenAI(
-    model="gpt-4o-mini",
+    model="gpt-4o-mini",  # Mini is fine for simple routing
     temperature=0,
     api_key=settings.openai_api_key
 )
