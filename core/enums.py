@@ -14,6 +14,11 @@ class EventType(str, Enum):
     PRODUCT_SEARCHED = "product_searched"
     CONTEXT_RETRIEVED = "context_retrieved"
     INTERACTION_COMPLETE = "interaction_complete"
+    # Agentic system events
+    AGENT_INVOKED = "agent_invoked"
+    AGENT_ROUTED = "agent_routed"
+    MEMORY_LOADED = "memory_loaded"
+    MEMORY_SAVED = "memory_saved"
 
 
 class OrderStatus(str, Enum):

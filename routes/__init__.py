@@ -8,6 +8,7 @@ from .cache import router as cache_router
 from .analytics import router as analytics_router
 from .n8n import router as n8n_router
 from .rag import router as rag_router
+from .agent import router as agent_router
 
 __all__ = [
     "health_router",
@@ -18,4 +19,5 @@ __all__ = [
     "analytics_router",
     "n8n_router",
     "rag_router",
+    "agent_router",
 ]

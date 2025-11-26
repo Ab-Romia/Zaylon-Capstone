@@ -50,55 +50,101 @@ Transforming the AI_Microservices project from a simple automation system into a
 
 ---
 
-### 🔄 Phase 2: The Agentic Core (IN PROGRESS)
+### ✅ Phase 2: The Agentic Core (COMPLETED)
 
 **Goal**: Build the Supervisor and Sub-agents using LangGraph
 
-#### Tasks Remaining:
+#### What Was Built:
 
-1. **Create `app/agents/graph.py`**
-   - Define State Schema (messages, customer_id, facts, context)
-   - Build LangGraph workflow
+1. **State Schema** (`app/agents/state.py`) ✅
+   - `FlowinitState` TypedDict with:
+     - messages: Conversation history
+     - customer_id & channel: Customer context
+     - user_profile: Long-term memory
+     - next: Routing decision
+     - chain_of_thought: Observability logging
+     - tool_calls: Tool invocation tracking
+   - AgentType and NodeName constants for type safety
 
-2. **Supervisor Node** (Router)
-   - LLM-based routing decision
-   - Routes to either Sales or Support agent
-   - Input: customer message + context
-   - Output: `Next: sales` or `Next: support`
+2. **Agent Nodes** (`app/agents/nodes.py`) ✅
+   - **load_memory_node**: Loads customer facts using get_customer_facts_tool
+   - **supervisor_node**: LLM-based router with structured prompts
+     - Routes to Sales or Support based on intent analysis
+     - Uses user profile for personalization
+     - Safe default to Support on errors
+   - **sales_agent_node**: Sales specialist with 6 tools
+     - Handles orders, products, purchases
+     - Tool-bound LLM agent
+   - **support_agent_node**: Support specialist with 4 tools
+     - Handles FAQs, policies, tracking
+     - RAG with self-correction built-in
+   - **save_memory_node**: Fact extraction and storage
+     - Uses LLM to extract preferences/constraints
+     - Saves to Memory Bank automatically
 
-3. **Sales Agent Node**
-   - Has access to: SALES_TOOLS (6 tools)
-   - Handles: Orders, product inquiries, purchase intent
-   - Can create orders, check availability, get pricing
+3. **Graph Assembly** (`app/agents/graph.py`) ✅
+   - LangGraph StateGraph with conditional routing
+   - Flow: START → Load Memory → Supervisor → [Sales | Support] → Save Memory → END
+   - MemorySaver for conversation persistence
+   - Convenient `invoke_agent()` and `stream_agent()` wrappers
 
-4. **Support Agent Node**
-   - Has access to: SUPPORT_TOOLS (4 tools)
-   - Handles: FAQs, policies, general questions, order status
-   - Implements SELF-CORRECTION loop (already in semantic_product_search_tool)
-
-5. **Memory Node**
-   - Runs after agent response
-   - Extracts facts from conversation
-   - Saves to Memory Bank using memory_tools
-
-6. **Graph Flow**:
-   ```
-   START → Load Memory → Supervisor → [Sales Agent | Support Agent] → Memory Node → END
-   ```
+4. **Test Suite** (`tests/manual_test_graph.py`) ✅
+   - 5 comprehensive test cases:
+     - Graph structure verification
+     - Basic sales flow
+     - Support flow
+     - Mixed intent handling
+     - Memory persistence across interactions
+   - Assertions for node execution order
+   - Tool call verification
 
 ---
 
-### 📝 Phase 3: API Integration (PENDING)
+### ✅ Phase 3: API Integration (COMPLETED)
 
 **Goal**: Expose the agent via `/api/v2/agent/invoke`
 
-#### Tasks:
+#### What Was Built:
 
-1. Create new API route (`routes/agent.py`)
-2. Define request/response models for v2 API
-3. Integrate LangGraph compiled graph
-4. Add Chain-of-Thought logging to analytics
-5. Keep v1 endpoints functional (backward compatibility)
+1. **Request/Response Models** (`models.py`) ✅
+   - `AgentInvokeRequest`: customer_id, message, channel, thread_id
+   - `AgentInvokeResponse`: success, response, agent_used, chain_of_thought, tool_calls, user_profile, execution_time_ms
+   - `AgentThought`: node name + reasoning step
+   - `AgentToolCall`: tool_name, arguments, result, success
+   - `AgentStreamChunk`: For real-time streaming updates
+
+2. **Agent API Router** (`routes/agent.py`) ✅
+   - **POST `/api/v2/agent/invoke`**: Main agent invocation endpoint
+     - Rate limited with API key authentication
+     - Full integration with flowinit_graph
+     - Comprehensive error handling
+     - Response includes chain of thought and tool calls
+   - **POST `/api/v2/agent/stream`**: Real-time streaming endpoint
+     - Server-Sent Events (SSE) format
+     - Streams thoughts, tool calls, and responses
+     - Useful for interactive UIs
+
+3. **Analytics Integration** ✅
+   - Added new event types to `core/enums.py`:
+     - `AGENT_INVOKED`: Tracks every agent call
+     - `AGENT_ROUTED`: Logs routing decisions
+     - `MEMORY_LOADED`: Memory Bank reads
+     - `MEMORY_SAVED`: Memory Bank writes
+   - Chain-of-Thought logging in analytics events
+   - Tool usage tracking (tool names, success rates)
+   - Execution time monitoring
+
+4. **Main App Integration** (`main.py`) ✅
+   - Added agent_router to FastAPI app
+   - Backward compatibility maintained (v1 endpoints unchanged)
+
+5. **Test Suite** (`tests/test_agent_api.py`) ✅
+   - HTTP-based tests using httpx
+   - Tests all three scenarios:
+     - Sales flow (product inquiry)
+     - Support flow (order tracking)
+     - Memory persistence (follow-up messages)
+   - Streaming endpoint validation
 
 ---
 
@@ -205,32 +251,38 @@ AI_Microservices/
 │   │   ├── orders_tools.py    ✅
 │   │   ├── rag_tools.py       ✅
 │   │   └── memory_tools.py    ✅
-│   └── agents/                🔄 (Next)
-│       ├── __init__.py
-│       ├── state.py
-│       ├── nodes.py
-│       └── graph.py
+│   └── agents/                ✅
+│       ├── __init__.py        ✅
+│       ├── state.py           ✅
+│       ├── nodes.py           ✅
+│       └── graph.py           ✅
 ├── migrations/
 │   └── 001_add_customer_facts_table.sql  ✅
 ├── tests/
+│   ├── manual_test_graph.py   ✅ (Phase 2)
+│   ├── test_agent_api.py      ✅ (Phase 3)
 │   └── evaluation/            📝 (Phase 4)
 │       ├── golden_dataset.csv
 │       ├── run_eval.py
 │       └── report.md
-└── routes/
-    └── agent.py               📝 (Phase 3)
+├── routes/
+│   └── agent.py               ✅ (Phase 3)
+├── models.py                  ✅ (Agent models added)
+└── core/
+    └── enums.py               ✅ (Agent events added)
 ```
 
 ---
 
 ## Success Criteria (From Requirements)
 
-- [ ] Agent handles complex mixed-intent queries
-- [ ] Memory Bank retrieves "Size M" preference automatically
-- [ ] RAG self-correction retries poor searches
-- [ ] Evaluation report shows >70% accuracy
-- [ ] Chain-of-Thought logging in database
-- [ ] Backward compatibility with v1 API
+- [x] **Phase 1**: Tools created with self-correction in RAG ✅
+- [x] **Phase 1**: Memory Bank database schema created ✅
+- [x] **Phase 2**: Agent handles complex mixed-intent queries ✅
+- [x] **Phase 2**: Memory Bank retrieves preferences automatically ✅
+- [x] **Phase 3**: Chain-of-Thought logging in database ✅
+- [x] **Phase 3**: Backward compatibility with v1 API ✅
+- [ ] **Phase 4**: Evaluation report shows >70% accuracy
 
 ---
 
@@ -288,6 +340,257 @@ Output your decision as: "Next: sales" or "Next: support"
 
 ---
 
-**Last Updated**: 2024 (Phase 1 Completion)
-**Next Milestone**: Phase 2 - LangGraph Agent Implementation
-**Estimated Time**: 4-6 hours for Phase 2
+**Last Updated**: 2025-11-26 (Phase 3 Completion)
+**Current Status**: Phase 1, 2 & 3 Complete ✅
+**Next Milestone**: Phase 4 - Evaluation & Hardening
+**Estimated Time**: 3-4 hours for Phase 4
+
+---
+
+## Phase 3 Implementation Details
+
+### API Endpoints
+
+**1. POST `/api/v2/agent/invoke`**
+
+Main endpoint for synchronous agent invocation.
+
+**Request**:
+```json
+{
+  "customer_id": "instagram:@username",
+  "message": "I want to buy a red hoodie in size L",
+  "channel": "instagram",
+  "thread_id": "optional-thread-id"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "response": "I found several red hoodies in size L...",
+  "agent_used": "sales",
+  "chain_of_thought": [
+    {
+      "node": "load_memory",
+      "reasoning": "Loading customer preferences...",
+      "timestamp": "2025-11-26T10:30:00Z"
+    },
+    {
+      "node": "supervisor",
+      "reasoning": "Customer wants to buy - routing to Sales",
+      "timestamp": "2025-11-26T10:30:01Z"
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool_name": "search_products_tool",
+      "arguments": {"query": "red hoodie", "limit": 5},
+      "result": "Found 3 products",
+      "success": true
+    }
+  ],
+  "user_profile": {
+    "preferred_size": "L",
+    "favorite_color": "blue"
+  },
+  "execution_time_ms": 2340,
+  "thread_id": "uuid-here"
+}
+```
+
+**2. POST `/api/v2/agent/stream`**
+
+Streaming endpoint for real-time updates using Server-Sent Events.
+
+**Request**: Same as invoke endpoint
+
+**Response**: SSE stream with chunks:
+```
+data: {"type": "thought", "node": "supervisor", "content": "Analyzing intent...", "done": false}
+
+data: {"type": "tool_call", "tool_name": "search_products_tool", "content": "Calling tool...", "done": false}
+
+data: {"type": "response", "content": "I found several red hoodies...", "done": false}
+
+data: {"type": "final", "content": "Agent execution complete", "done": true}
+```
+
+### Chain-of-Thought Analytics
+
+Every agent invocation logs comprehensive data to the analytics database:
+
+```python
+{
+  "event_type": "agent_invoked",
+  "event_data": {
+    "success": true,
+    "agent_used": "sales",
+    "channel": "instagram",
+    "message_preview": "I want to buy a red hoodie...",
+    "response_preview": "I found several red hoodies...",
+    "chain_of_thought": [
+      {"node": "supervisor", "reasoning": "Routing to Sales"},
+      {"node": "sales_agent", "reasoning": "Searching products"}
+    ],
+    "tool_calls_count": 2,
+    "tools_used": ["search_products_tool", "check_product_availability_tool"]
+  },
+  "response_time_ms": 2340
+}
+```
+
+This enables:
+- **Observability**: Track agent reasoning paths
+- **Debugging**: Identify where agents fail
+- **Optimization**: Find bottlenecks in tool calls
+- **Analytics**: Understand which agents/tools are most used
+
+### Testing Phase 3
+
+**Running API Tests**:
+
+```bash
+# 1. Start the server
+uvicorn main:app --reload
+
+# 2. In another terminal, run tests
+python tests/test_agent_api.py
+```
+
+**Expected Output**:
+```
+================================================================================
+TEST: Agent Invoke Endpoint
+================================================================================
+
+[Test 1] Sales Flow - Product Inquiry
+--------------------------------------------------------------------------------
+Status Code: 200
+✓ Success: True
+✓ Agent Used: sales
+✓ Execution Time: 2340ms
+✓ Response Preview: I found several red hoodies in size L...
+✓ Chain of Thought Steps: 4
+✓ Tool Calls: 2
+
+[Test 2] Support Flow - Order Status Inquiry
+--------------------------------------------------------------------------------
+✓ Agent Used: support
+
+[Test 3] Memory Persistence - Follow-up Message
+--------------------------------------------------------------------------------
+✓ Memory appears to be working (response mentions preferences)
+```
+
+### Integration with Existing System
+
+**Backward Compatibility**:
+- All v1 endpoints remain unchanged
+- n8n workflows continue to work
+- v2 API is completely separate
+- No breaking changes to existing functionality
+
+**Migration Path**:
+- Clients can gradually move from v1 to v2
+- Both APIs can run simultaneously
+- v2 offers richer responses with agent reasoning
+
+---
+
+## Phase 2 Implementation Details
+
+### How the Agent System Works
+
+**Example Execution Flow**:
+
+```
+User: "I want to buy a red hoodie in size M"
+
+1. load_memory_node:
+   - Calls get_customer_facts_tool(customer_id)
+   - Loads: {"preferred_size": "M", "favorite_color": "blue"}
+   - Updates state.user_profile
+
+2. supervisor_node:
+   - Analyzes: "buy a red hoodie"
+   - Context: User prefers size M
+   - Decision: Route to SALES (buying intent)
+   - Updates state.next = "sales"
+
+3. sales_agent_node:
+   - System prompt includes user profile
+   - Calls search_products_tool("red hoodie")
+   - Calls check_product_availability_tool(size="M")
+   - Generates response with product recommendations
+   - Updates state.final_response
+
+4. save_memory_node:
+   - Analyzes conversation
+   - Extracts: "recently_browsed=red_hoodie"
+   - Calls save_customer_fact_tool to store
+   - Logs fact extraction
+
+Result: Complete, personalized response with memory persistence
+```
+
+### Supervisor Routing Logic
+
+The supervisor uses a carefully crafted prompt that:
+- Analyzes the customer's message
+- Considers their profile (preferences, history)
+- Routes to the appropriate specialist
+- Defaults to Support for ambiguous cases
+- Handles mixed intent by routing to Sales (can do both)
+
+### Memory Extraction
+
+The save_memory_node uses an LLM to extract facts:
+- **Explicit facts**: User directly states ("I wear size M")
+  - Confidence: 100
+  - Source: "explicit"
+- **Inferred facts**: Agent deduces from context
+  - Confidence: 70-90
+  - Source: "inferred"
+
+Facts are categorized:
+- **preference**: Likes, favorites, usual choices
+- **constraint**: Budget limits, delivery requirements
+- **personal_info**: Address updates, contact changes
+
+---
+
+## Testing Phase 2
+
+### Running the Test Suite
+
+```bash
+# Set OpenAI API key
+export OPENAI_API_KEY='your-key-here'
+
+# Run all tests
+python -m tests.manual_test_graph
+```
+
+### Expected Results
+
+All 5 tests should pass:
+- ✓ Graph Structure (nodes present)
+- ✓ Basic Sales Flow (routing works)
+- ✓ Support Flow (knowledge base accessed)
+- ✓ Mixed Intent (handled correctly)
+- ✓ Memory Persistence (facts saved & loaded)
+
+### Test Output Example
+
+```
+TEST SUMMARY
+================================
+Total Tests: 5
+Passed: 5
+Failed: 0
+Success Rate: 100.0%
+
+🎉 ALL TESTS PASSED!
+```

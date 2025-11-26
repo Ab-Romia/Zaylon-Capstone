@@ -22,7 +22,7 @@ from services import (
 )
 from routes import (
     health_router, products_router, context_router, intent_router,
-    cache_router, analytics_router, n8n_router, rag_router
+    cache_router, analytics_router, n8n_router, rag_router, agent_router
 )
 
 # Configure logging
@@ -132,6 +132,7 @@ app.include_router(cache_router)
 app.include_router(analytics_router)
 app.include_router(n8n_router)
 app.include_router(rag_router)
+app.include_router(agent_router)  # Flowinit v2 agentic API
 
 
 if __name__ == "__main__":
