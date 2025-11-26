@@ -36,7 +36,7 @@ langchain==0.1.0
 langchain-community==0.0.13
 langchain-openai==0.0.5
 langgraph==0.0.20
-langsmith==0.0.80
+# REMOVED: langsmith==0.0.80 (Let langchain install the compatible version)
 
 # Text Processing
 pypdf==4.0.0
