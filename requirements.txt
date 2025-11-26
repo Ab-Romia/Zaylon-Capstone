@@ -31,9 +31,14 @@ openai==1.12.0
 sentence-transformers==2.3.1
 tiktoken==0.5.2
 
-# Text Processing
+# LangChain & Agentic Framework
 langchain==0.1.0
 langchain-community==0.0.13
+langchain-openai==0.0.5
+langgraph==0.0.20
+langsmith==0.0.80
+
+# Text Processing
 pypdf==4.0.0
 python-docx==1.1.0
 markdown==3.5.2
@@ -41,3 +46,8 @@ markdown==3.5.2
 # Vector Operations
 numpy==1.26.3
 scikit-learn==1.4.0
+
+# Evaluation & Testing
+pandas==2.1.4
+pytest==7.4.3
+pytest-asyncio==0.23.2
