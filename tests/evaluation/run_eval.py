@@ -30,7 +30,7 @@ except ImportError:
 
 # Configuration
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
-API_KEY = os.getenv("API_KEY", "test-api-key-123")
+API_KEY = os.getenv("API_KEY", "Xg-XWT6bR1ZdssyX6kZ9jI2DbrX__EZRgYeTvTFIkjY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
@@ -190,7 +190,7 @@ async def evaluate_single_case(
 ) -> Dict[str, Any]:
     """Evaluate a single test case."""
     print(f"\n{'='*80}")
-    print(f"Test {test_id}: {test_case['input_message'][:60]}...")
+    print(f"Test {test_id}: {test_case['input_message']}")
     print(f"Expected: {test_case['expected_agent']} agent | {test_case['difficulty']} | {test_case['language']}")
     print(f"{'='*80}")
 
@@ -223,7 +223,7 @@ async def evaluate_single_case(
 
     print(f"✓ Agent: {agent_response.get('agent_used')}")
     print(f"✓ Tools: {[tc['tool_name'] for tc in agent_response.get('tool_calls', [])]}")
-    print(f"✓ Response: {agent_response.get('response', '')[:100]}...")
+    print(f"✓ Response: {agent_response.get('response', '')}")
     print(f"✓ Time: {agent_response.get('execution_time_ms')}ms")
 
     # Get LLM judge evaluation
@@ -232,7 +232,7 @@ async def evaluate_single_case(
 
     print(f"  Intent: {judgment['intent_accuracy']:.2f} | Tool: {judgment['tool_selection']:.2f} | "
           f"Quality: {judgment['response_quality']:.2f} | Overall: {judgment['overall_success']:.2f}")
-    print(f"  Reasoning: {judgment['reasoning'][:100]}...")
+    print(f"  Reasoning: {judgment['reasoning']}")
 
     # Compile results
     tools_called = ", ".join([tc.get("tool_name", "") for tc in agent_response.get("tool_calls", [])])
@@ -243,7 +243,7 @@ async def evaluate_single_case(
         "api_error": "",
         "agent_used": agent_response.get("agent_used", "unknown"),
         "tools_called": tools_called,
-        "response_preview": agent_response.get("response", "")[:200],
+        "response_preview": agent_response.get("response", ""),
         "execution_time_ms": agent_response.get("execution_time_ms", 0),
         "intent_accuracy": judgment["intent_accuracy"],
         "tool_selection": judgment["tool_selection"],
@@ -441,7 +441,7 @@ These scenarios had lower success rates:
 """
 
     for _, row in worst_tests.iterrows():
-        report += f"| {row['test_id']} | {row['input_message'][:40]}... | {row['overall_success']:.0%} | {row['difficulty']} | {row['judge_reasoning'][:60]}... |\n"
+        report += f"| {row['test_id']} | {row['input_message'][:40]}... | {row['overall_success']:.0%} | {row['difficulty']} | {row['judge_reasoning']}|\n"
 
     report += f"""
 ---
