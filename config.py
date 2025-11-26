@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     qdrant_collection_products: str = "products"
     qdrant_collection_knowledge: str = "knowledge_base"
 
-    # Embeddings
-    openai_api_key: Optional[str] = None  # For OpenAI embeddings
+    # Embeddings & LLM
+    openai_api_key: Optional[str] = None  # For OpenAI embeddings and agents
     embedding_model: str = "text-embedding-3-small"  # OpenAI model
     local_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # For Arabic/multilingual
     use_local_embeddings: bool = False  # Set to True to use local models instead of OpenAI
