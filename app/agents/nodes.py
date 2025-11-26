@@ -76,16 +76,16 @@ async def load_memory_node(state: FlowinitState) -> Dict[str, Any]:
 
         return {
             "user_profile": user_profile,
-            "chain_of_thought": [thought],
-            "current_agent": "memory"
+            "chain_of_thought": [thought]
+            # Don't set current_agent - preserve value from previous nodes
         }
 
     except Exception as e:
         logger.error(f"[LOAD_MEMORY] Error loading memory: {e}")
         return {
             "user_profile": {},
-            "chain_of_thought": [f"Memory load failed: {str(e)}"],
-            "current_agent": "memory"
+            "chain_of_thought": [f"Memory load failed: {str(e)}"]
+            # Don't set current_agent - preserve value from previous nodes
         }
 
 
@@ -187,22 +187,22 @@ Return ONLY valid JSON array, no other text."""),
             logger.info(f"[SAVE_MEMORY] {thought}")
 
             return {
-                "chain_of_thought": [thought],
-                "current_agent": "memory"
+                "chain_of_thought": [thought]
+                # Don't set current_agent - preserve the agent that handled the request
             }
 
         except json.JSONDecodeError as e:
             logger.error(f"[SAVE_MEMORY] Failed to parse extracted facts: {e}")
             return {
-                "chain_of_thought": ["Fact extraction parsing failed"],
-                "current_agent": "memory"
+                "chain_of_thought": ["Fact extraction parsing failed"]
+                # Don't set current_agent - preserve the agent that handled the request
             }
 
     except Exception as e:
         logger.error(f"[SAVE_MEMORY] Error extracting facts: {e}")
         return {
-            "chain_of_thought": [f"Fact extraction failed: {str(e)}"],
-            "current_agent": "memory"
+            "chain_of_thought": [f"Fact extraction failed: {str(e)}"]
+            # Don't set current_agent - preserve the agent that handled the request
         }
 
 
@@ -362,21 +362,60 @@ Provide a complete, helpful response."""
         agent_messages = [SystemMessage(content=system_message)] + messages
         response = await sales_agent.ainvoke(agent_messages)
 
-        # Log tool usage
+        # Execute tools if requested
         tool_calls_info = []
         if hasattr(response, 'tool_calls') and response.tool_calls:
+            from langchain_core.messages import ToolMessage
+
+            # Execute each tool call
             for tool_call in response.tool_calls:
+                tool_name = tool_call.get("name")
+                tool_args = tool_call.get("args", {})
+                tool_id = tool_call.get("id", str(len(tool_calls_info)))
+
+                logger.info(f"[SALES AGENT] Executing tool: {tool_name}")
+
+                # Find and execute the tool
+                tool_result = None
+                for tool in SALES_TOOLS:
+                    if tool.name == tool_name:
+                        try:
+                            tool_result = await tool.ainvoke(tool_args)
+                            logger.info(f"[SALES AGENT] Tool {tool_name} succeeded")
+                        except Exception as e:
+                            tool_result = f"Tool execution failed: {str(e)}"
+                            logger.error(f"[SALES AGENT] Tool {tool_name} failed: {e}")
+                        break
+
+                if tool_result is None:
+                    tool_result = f"Tool {tool_name} not found"
+
                 tool_calls_info.append({
-                    "tool": tool_call.get("name"),
-                    "args": tool_call.get("args")
+                    "tool_name": tool_name,
+                    "arguments": tool_args,
+                    "result": str(tool_result)[:200],  # Truncate for logging
+                    "success": "failed" not in str(tool_result).lower()
                 })
-                logger.info(f"[SALES AGENT] Tool called: {tool_call.get('name')}")
+
+                # Add tool result to conversation
+                agent_messages.append(ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_id
+                ))
+
+            # Call agent again with tool results to get final response
+            agent_messages.append(response)  # Add the assistant's message with tool calls
+            final_response = await sales_agent.ainvoke(agent_messages)
+            response_text = final_response.content
+        else:
+            # No tools called, use response directly
+            response_text = response.content if response.content else "I'm processing your request..."
 
         thought = f"Sales agent processed request (used {len(tool_calls_info)} tools)"
 
         return {
             "messages": [response],
-            "final_response": response.content if response.content else "I'm processing your request...",
+            "final_response": response_text,
             "chain_of_thought": [thought],
             "tool_calls": tool_calls_info,
             "current_agent": AgentType.SALES,
@@ -451,21 +490,60 @@ Provide a complete, helpful response."""
         agent_messages = [SystemMessage(content=system_message)] + messages
         response = await support_agent.ainvoke(agent_messages)
 
-        # Log tool usage
+        # Execute tools if requested
         tool_calls_info = []
         if hasattr(response, 'tool_calls') and response.tool_calls:
+            from langchain_core.messages import ToolMessage
+
+            # Execute each tool call
             for tool_call in response.tool_calls:
+                tool_name = tool_call.get("name")
+                tool_args = tool_call.get("args", {})
+                tool_id = tool_call.get("id", str(len(tool_calls_info)))
+
+                logger.info(f"[SUPPORT AGENT] Executing tool: {tool_name}")
+
+                # Find and execute the tool
+                tool_result = None
+                for tool in SUPPORT_TOOLS:
+                    if tool.name == tool_name:
+                        try:
+                            tool_result = await tool.ainvoke(tool_args)
+                            logger.info(f"[SUPPORT AGENT] Tool {tool_name} succeeded")
+                        except Exception as e:
+                            tool_result = f"Tool execution failed: {str(e)}"
+                            logger.error(f"[SUPPORT AGENT] Tool {tool_name} failed: {e}")
+                        break
+
+                if tool_result is None:
+                    tool_result = f"Tool {tool_name} not found"
+
                 tool_calls_info.append({
-                    "tool": tool_call.get("name"),
-                    "args": tool_call.get("args")
+                    "tool_name": tool_name,
+                    "arguments": tool_args,
+                    "result": str(tool_result)[:200],  # Truncate for logging
+                    "success": "failed" not in str(tool_result).lower()
                 })
-                logger.info(f"[SUPPORT AGENT] Tool called: {tool_call.get('name')}")
+
+                # Add tool result to conversation
+                agent_messages.append(ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_id
+                ))
+
+            # Call agent again with tool results to get final response
+            agent_messages.append(response)  # Add the assistant's message with tool calls
+            final_response = await support_agent.ainvoke(agent_messages)
+            response_text = final_response.content
+        else:
+            # No tools called, use response directly
+            response_text = response.content if response.content else "I'm here to help you."
 
         thought = f"Support agent processed request (used {len(tool_calls_info)} tools)"
 
         return {
             "messages": [response],
-            "final_response": response.content if response.content else "I'm here to help you.",
+            "final_response": response_text,
             "chain_of_thought": [thought],
             "tool_calls": tool_calls_info,
             "current_agent": AgentType.SUPPORT,
