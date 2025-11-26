@@ -8,22 +8,23 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import get_settings
-from database import get_db
-from auth import verify_api_key, limiter, get_rate_limit_string
-from models import (
+from app.core.config import get_settings
+from app.db import get_db
+from app.core.security import verify_api_key, limiter, get_rate_limit_string
+from app.schemas import (
     PrepareContextRequest, PrepareContextResponse,
     StoreInteractionRequest, StoreInteractionResponse,
     CreateOrderRequest, CreateOrderResponse,
-    PrepareContextEnhancedRequest, PrepareContextEnhancedResponse
+    PrepareContextEnhancedRequest, PrepareContextEnhancedResponse,
+    ProcessCompleteRequest, ProcessCompleteResponse
 )
-from services import products, context, intent, cache, analytics, get_rag_service
-from services.orders import (
+from app.services import products, context, intent, cache, analytics, get_rag_service
+from app.services.orders import (
     create_order, get_customer_order_history,
     get_enhanced_customer_metadata, format_order_history_for_ai
 )
-from core.background import background_tasks
-from core.enums import EventType
+from app.core.background import background_tasks
+from app.core.enums import EventType
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -399,40 +400,6 @@ async def n8n_prepare_context_enhanced(
         customer_order_history=order_history_formatted,
         rag_enabled=True
     )
-
-
-# Combined request/response models for streamlined endpoint
-class ProcessCompleteRequest(BaseModel):
-    customer_id: str
-    message: str
-    channel: str = Field(..., pattern="^(instagram|whatsapp)$")
-    ai_response: Optional[str] = None
-    action: Optional[str] = None
-    order_data: Optional[Dict[str, Any]] = None
-    tokens_used: int = 0
-    response_time_ms: int = 0
-
-
-class ProcessCompleteResponse(BaseModel):
-    # Context data (for AI call)
-    conversation_history: str
-    relevant_products: str
-    customer_order_history: str
-    intent: str
-    confidence: float
-    entities: Dict[str, Any]
-    customer_name: Optional[str]
-    customer_phone: Optional[str]
-    total_orders: int
-    total_spent: float
-    preferred_language: str
-    skip_ai: bool
-    cached_response: Optional[str]
-    # Order result (if order was created)
-    order_created: bool = False
-    order_id: Optional[str] = None
-    order_error: Optional[str] = None
-    final_response: Optional[str] = None
 
 
 @router.post(

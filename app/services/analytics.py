@@ -8,16 +8,17 @@ from typing import Dict, Any, List, Optional, Union
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import AnalyticsEvent, Conversation, async_session
-from models import (
+from app.models import AnalyticsEvent, Conversation
+from app.db import async_session
+from app.schemas import (
     AnalyticsLogResponse, AnalyticsDashboardResponse,
     TopIntent, TopProduct
 )
-from core.constants import (
+from app.core.constants import (
     AI_COST_PER_1K_INPUT, AI_COST_PER_1K_OUTPUT,
     AI_INPUT_TOKEN_RATIO, AI_OUTPUT_TOKEN_RATIO
 )
-from core.enums import EventType
+from app.core.enums import EventType
 
 logger = logging.getLogger(__name__)
 

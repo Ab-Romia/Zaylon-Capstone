@@ -13,13 +13,13 @@ from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import NoResultFound
 
-from database import Conversation, Customer
-from models import (
+from app.models import Conversation, Customer
+from app.schemas import (
     MessageInfo, CustomerMetadata, RetrieveContextResponse,
     StoreContextResponse, LinkChannelsResponse
 )
-from services.products import detect_language
-from core.constants import (
+from app.services.products import detect_language
+from app.core.constants import (
     CONTEXT_CACHE_TTL, MAX_CACHE_SIZE, CACHE_EVICTION_BATCH,
     MESSAGE_TRUNCATE_LENGTH, CONTEXT_HISTORY_DISPLAY_LIMIT,
     PHONE_PATTERN, NAME_PATTERNS
