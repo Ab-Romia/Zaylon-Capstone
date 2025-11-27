@@ -3,6 +3,7 @@ E-commerce DM Microservice - FastAPI Application
 Main entry point with modular route organization.
 """
 import logging
+import warnings
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -24,6 +25,11 @@ from routes import (
     health_router, products_router, context_router, intent_router,
     cache_router, analytics_router, n8n_router, rag_router, agent_router
 )
+
+# Suppress Pydantic validation warnings from Qdrant client
+# These are harmless warnings about extra fields in Qdrant's config responses
+warnings.filterwarnings("ignore", message=".*Extra inputs are not permitted.*")
+warnings.filterwarnings("ignore", message=".*Input should be a valid integer.*")
 
 # Configure logging
 logging.basicConfig(
