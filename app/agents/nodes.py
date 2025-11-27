@@ -388,30 +388,46 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
         # First attempt - ask nicely
         response = await sales_agent.ainvoke(agent_messages)
 
-        # Check if tools were called
-        tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+        # Check if tools were called - robust checking
+        tools_called = (
+            hasattr(response, 'tool_calls') and
+            response.tool_calls is not None and
+            isinstance(response.tool_calls, list) and
+            len(response.tool_calls) > 0
+        )
 
         logger.info(f"[SALES AGENT] Response type: {type(response)}")
+        logger.info(f"[SALES AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
+        logger.info(f"[SALES AGENT] tool_calls value: {getattr(response, 'tool_calls', 'N/A')}")
         logger.info(f"[SALES AGENT] Tools called on first attempt: {tools_called}")
 
         # If NO tools called, force a retry with stronger prompting
         if not tools_called:
             logger.warning("[SALES AGENT] No tools called - forcing retry with stronger prompt")
 
+            # IMPORTANT: Only append response if it's pure text (no tool_calls)
+            # If it has tool_calls, we must NOT append it without executing them
+            if not (hasattr(response, 'tool_calls') and response.tool_calls):
+                agent_messages.append(response)
+
             # Add a strong forcing message
-            agent_messages.append(response)  # Add the failed response
             agent_messages.append(HumanMessage(
                 content="STOP. You MUST call a tool before responding. Call search_products_tool, check_product_availability_tool, create_order_tool, get_order_history_tool, or check_order_status_tool now. Do NOT respond with text - call a tool first."
             ))
 
             # Retry
             response = await sales_agent.ainvoke(agent_messages)
-            tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+            tools_called = (
+                hasattr(response, 'tool_calls') and
+                response.tool_calls is not None and
+                isinstance(response.tool_calls, list) and
+                len(response.tool_calls) > 0
+            )
             logger.info(f"[SALES AGENT] Tools called on second attempt: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
-        if hasattr(response, 'tool_calls') and response.tool_calls:
+        if hasattr(response, 'tool_calls') and response.tool_calls and len(response.tool_calls) > 0:
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
@@ -564,30 +580,46 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
         # First attempt - ask nicely
         response = await support_agent.ainvoke(agent_messages)
 
-        # Check if tools were called
-        tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+        # Check if tools were called - robust checking
+        tools_called = (
+            hasattr(response, 'tool_calls') and
+            response.tool_calls is not None and
+            isinstance(response.tool_calls, list) and
+            len(response.tool_calls) > 0
+        )
 
         logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
+        logger.info(f"[SUPPORT AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
+        logger.info(f"[SUPPORT AGENT] tool_calls value: {getattr(response, 'tool_calls', 'N/A')}")
         logger.info(f"[SUPPORT AGENT] Tools called on first attempt: {tools_called}")
 
         # If NO tools called, force a retry with stronger prompting
         if not tools_called:
             logger.warning("[SUPPORT AGENT] No tools called - forcing retry with stronger prompt")
 
+            # IMPORTANT: Only append response if it's pure text (no tool_calls)
+            # If it has tool_calls, we must NOT append it without executing them
+            if not (hasattr(response, 'tool_calls') and response.tool_calls):
+                agent_messages.append(response)
+
             # Add a strong forcing message
-            agent_messages.append(response)  # Add the failed response
             agent_messages.append(HumanMessage(
                 content="STOP. You MUST call a tool before responding. Call search_knowledge_base_tool, get_order_history_tool, check_order_status_tool, or semantic_product_search_tool now. Do NOT respond with text - call a tool first."
             ))
 
             # Retry
             response = await support_agent.ainvoke(agent_messages)
-            tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+            tools_called = (
+                hasattr(response, 'tool_calls') and
+                response.tool_calls is not None and
+                isinstance(response.tool_calls, list) and
+                len(response.tool_calls) > 0
+            )
             logger.info(f"[SUPPORT AGENT] Tools called on second attempt: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
-        if hasattr(response, 'tool_calls') and response.tool_calls:
+        if hasattr(response, 'tool_calls') and response.tool_calls and len(response.tool_calls) > 0:
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
