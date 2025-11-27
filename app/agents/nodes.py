@@ -320,6 +320,7 @@ async def sales_agent_node(state: FlowinitState) -> Dict[str, Any]:
 
     messages = state["messages"]
     user_profile = state.get("user_profile", {})
+    customer_id = state.get("customer_id", "unknown")
 
     # Build system message with profile context
     profile_context = ""
@@ -329,42 +330,64 @@ async def sales_agent_node(state: FlowinitState) -> Dict[str, Any]:
             profile_items.append(f"- {key}: {data['value']}")
         profile_context = "\n**Customer Preferences**:\n" + "\n".join(profile_items)
 
-    system_message = f"""You are a friendly sales representative for an e-commerce clothing store.
+    system_message = f"""You are a sales specialist for an e-commerce clothing store. You MUST use tools to help customers.
 
-**Your Role**:
-- Help customers find products
-- Check availability and stock
-- Process orders
-- Provide product recommendations
-- Answer pricing questions
+**Customer Context**:
+- Customer ID: {customer_id}
 
 {profile_context}
 
-**Available Tools** (YOU MUST USE THESE):
-- search_products_tool: Search for products by description
-- check_product_availability_tool: Check if product is in stock
-- create_order_tool: Create an order for the customer
+**MANDATORY TOOL USAGE RULES**:
+You have NO product information in your memory. You MUST call tools for ANY product-related query.
 
-**CRITICAL INSTRUCTIONS**:
-1. **ALWAYS use search_products_tool when customer asks about products** - You do NOT have product information without calling tools
-2. **ALWAYS use check_product_availability_tool to verify stock** before recommending products
-3. **ALWAYS use create_order_tool when customer wants to buy** - Never tell them to "visit the website"
-4. If customer preferences are known, use them in tool calls (e.g., search for their preferred size/color)
-5. Be friendly and helpful
-6. If creating an order, ensure you have all required info (name, phone, address, size, color)
-7. Speak in a mix of English and Arabic if appropriate for the customer
+**When customer asks about products/prices/stock → IMMEDIATELY call search_products_tool**
+Examples:
+- "I want a red hoodie" → call search_products_tool(query="red hoodie")
+- "عايز بنطلون اسود" → call search_products_tool(query="بنطلون اسود")
+- "3ayez jeans azra2" → call search_products_tool(query="jeans azra2")
+- "Show me hoodies" → call search_products_tool(query="hoodies")
+- "What's the price of the red hoodie?" → call search_products_tool(query="red hoodie")
 
-**IMPORTANT**: You CANNOT answer questions about products without using tools. Always call the appropriate tool first, then respond based on the results.
+**When customer wants to buy/order → call create_order_tool**
+Examples:
+- "I want to buy size L" → call create_order_tool(...)
+- "3ayz a3ml order" → call create_order_tool(...)
 
-Provide a complete, helpful response."""
+**When customer asks about order status → call check_order_status_tool**
+Examples:
+- "Where is my order?" → call check_order_status_tool(...)
+- "Order status?" → call check_order_status_tool(...)
+
+**CRITICAL RULES**:
+1. NEVER respond without calling a tool first for product/order queries
+2. NEVER say "I'm processing your request" - call the tool immediately
+3. NEVER make up product information - use tools only
+4. Support Arabic, Franco-Arabic, and English equally
+5. After getting tool results, provide a natural, helpful response in the customer's language
+
+**Available Tools**:
+- search_products_tool(query, limit=5) - Search products by keyword
+- check_product_availability_tool(product_name, size, color) - Check stock
+- create_order_tool(customer_id, product_id, quantity, size, color, name, phone, address) - Create order
+- get_order_history_tool(customer_id) - Get customer's past orders
+- check_order_status_tool(order_id) - Check specific order status
+
+Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
     try:
-        # Create agent with tools
-        sales_agent = llm.bind_tools(SALES_TOOLS)
+        # Create agent with tools - force auto tool usage
+        sales_agent = llm.bind_tools(SALES_TOOLS, tool_choice="auto")
 
         # Invoke agent
         agent_messages = [SystemMessage(content=system_message)] + messages
         response = await sales_agent.ainvoke(agent_messages)
+
+        # Debug: Log if tools were called
+        logger.info(f"[SALES AGENT] Response type: {type(response)}")
+        logger.info(f"[SALES AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
+        if hasattr(response, 'tool_calls'):
+            logger.info(f"[SALES AGENT] Tool calls: {response.tool_calls}")
+        logger.info(f"[SALES AGENT] Response content: {response.content[:200] if response.content else 'None'}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -455,6 +478,7 @@ async def support_agent_node(state: FlowinitState) -> Dict[str, Any]:
 
     messages = state["messages"]
     user_profile = state.get("user_profile", {})
+    customer_id = state.get("customer_id", "unknown")
 
     # Build system message
     profile_context = ""
@@ -464,41 +488,62 @@ async def support_agent_node(state: FlowinitState) -> Dict[str, Any]:
             profile_items.append(f"- {key}: {data['value']}")
         profile_context = "\n**Customer Profile**:\n" + "\n".join(profile_items)
 
-    system_message = f"""You are a helpful customer support representative for an e-commerce clothing store.
+    system_message = f"""You are a support specialist for an e-commerce clothing store. You MUST use tools to help customers.
 
-**Your Role**:
-- Answer questions about policies (returns, shipping, refunds)
-- Help track orders
-- Provide general information
-- Resolve customer concerns
+**Customer Context**:
+- Customer ID: {customer_id} (use this when calling order tools)
 
 {profile_context}
 
-**Available Tools** (YOU MUST USE THESE):
-- search_knowledge_base_tool: Search FAQs and policies
-- get_order_history_tool: Retrieve customer's order history
-- check_order_status_tool: Check status of specific orders
-- semantic_product_search_tool: Search products semantically (includes auto-retry if needed)
+**MANDATORY TOOL USAGE RULES**:
+You have NO policy information or order data in your memory. You MUST call tools for ANY support query.
 
-**CRITICAL INSTRUCTIONS**:
-1. **ALWAYS use search_knowledge_base_tool for policy questions** - You do NOT have policy information without calling this tool
-2. **ALWAYS use get_order_history_tool when customer asks about their orders** - Never guess or make up order information
-3. **ALWAYS use check_order_status_tool to track specific orders** - Call this whenever customer mentions tracking or status
-4. **Use semantic_product_search_tool for product searches** - This tool has self-correction built-in
-5. Be empathetic and helpful
-6. Provide clear, concise answers
+**When customer asks about policies/returns/shipping → IMMEDIATELY call search_knowledge_base_tool**
+Examples:
+- "What are your return policies?" → call search_knowledge_base_tool(query="return policy")
+- "How long does shipping take?" → call search_knowledge_base_tool(query="shipping time")
+- "Can I get a refund?" → call search_knowledge_base_tool(query="refund policy")
 
-**IMPORTANT**: You CANNOT answer questions about policies, orders, or tracking without using tools. Always call the appropriate tool first, then respond based on the results.
+**When customer asks about their orders → call get_order_history_tool OR check_order_status_tool**
+Examples:
+- "Where is my order?" → call get_order_history_tool(customer_id=...)
+- "Track order #12345" → call check_order_status_tool(order_id="12345")
+- "What orders do I have?" → call get_order_history_tool(customer_id=...)
 
-Provide a complete, helpful response."""
+**When customer asks about products → call semantic_product_search_tool**
+Examples:
+- "Do you have blue shirts?" → call semantic_product_search_tool(query="blue shirts")
+- "Show me hoodies" → call semantic_product_search_tool(query="hoodies")
+
+**CRITICAL RULES**:
+1. NEVER respond without calling a tool first for policy/order/product queries
+2. NEVER say "I'm here to help" without actually calling tools
+3. NEVER ask for customer ID - you already have it from the conversation context
+4. Support Arabic, Franco-Arabic, and English equally
+5. After getting tool results, provide a natural, empathetic response in the customer's language
+
+**Available Tools**:
+- search_knowledge_base_tool(query) - Search FAQs and policies
+- get_order_history_tool(customer_id) - Get all customer orders
+- check_order_status_tool(order_id) - Check specific order status
+- semantic_product_search_tool(query) - Search products with self-correction
+
+Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
     try:
-        # Create agent with tools
-        support_agent = llm.bind_tools(SUPPORT_TOOLS)
+        # Create agent with tools - force auto tool usage
+        support_agent = llm.bind_tools(SUPPORT_TOOLS, tool_choice="auto")
 
         # Invoke agent
         agent_messages = [SystemMessage(content=system_message)] + messages
         response = await support_agent.ainvoke(agent_messages)
+
+        # Debug: Log if tools were called
+        logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
+        logger.info(f"[SUPPORT AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
+        if hasattr(response, 'tool_calls'):
+            logger.info(f"[SUPPORT AGENT] Tool calls: {response.tool_calls}")
+        logger.info(f"[SUPPORT AGENT] Response content: {response.content[:200] if response.content else 'None'}")
 
         # Execute tools if requested
         tool_calls_info = []
