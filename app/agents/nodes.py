@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Initialize LLM for agents - use gpt-4o for reliable tool calling
-llm = ChatOpenAI(
+# Note: We create agents dynamically with tool_choice in each node
+llm_base = ChatOpenAI(
     model="gpt-4o",  # Better function calling than mini
     temperature=0,
     api_key=settings.openai_api_key
@@ -375,19 +376,35 @@ Examples:
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
     try:
-        # Create agent with tools - force auto tool usage
-        sales_agent = llm.bind_tools(SALES_TOOLS, tool_choice="auto")
+        # Create agent with tools - FORCE tool usage for first call
+        # Using parallel_tool_calls=False to make it call one tool at a time
+        sales_agent_with_tools = llm_base.bind_tools(
+            SALES_TOOLS,
+            parallel_tool_calls=False
+        )
 
-        # Invoke agent
+        # For the FIRST call, we configure the LLM to prefer tool usage
+        sales_agent_first = llm_base.bind_tools(
+            SALES_TOOLS,
+            tool_choice="any",  # Force at least one tool call
+            parallel_tool_calls=False
+        )
+
+        # Invoke agent with tool requirement
         agent_messages = [SystemMessage(content=system_message)] + messages
-        response = await sales_agent.ainvoke(agent_messages)
+
+        logger.info(f"[SALES AGENT] Invoking with {len(agent_messages)} messages")
+        logger.info(f"[SALES AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
+
+        response = await sales_agent_first.ainvoke(agent_messages)
 
         # Debug: Log if tools were called
         logger.info(f"[SALES AGENT] Response type: {type(response)}")
         logger.info(f"[SALES AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
         if hasattr(response, 'tool_calls'):
             logger.info(f"[SALES AGENT] Tool calls: {response.tool_calls}")
-        logger.info(f"[SALES AGENT] Response content: {response.content[:200] if response.content else 'None'}")
+        else:
+            logger.warning(f"[SALES AGENT] NO TOOL_CALLS - Response content: {response.content}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -434,11 +451,12 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                     tool_call_id=tool_id
                 ))
 
-            # Call agent again with tool results to get final response
-            final_response = await sales_agent.ainvoke(agent_messages)
+            # Call agent again with tool results to get final response (without forcing tools)
+            final_response = await sales_agent_with_tools.ainvoke(agent_messages)
             response_text = final_response.content
         else:
-            # No tools called, use response directly
+            # No tools called - this should NOT happen with tool_choice="any"
+            logger.error("[SALES AGENT] NO TOOLS CALLED - This should not happen!")
             response_text = response.content if response.content else "I'm processing your request..."
 
         thought = f"Sales agent processed request (used {len(tool_calls_info)} tools)"
@@ -531,19 +549,34 @@ Examples:
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
     try:
-        # Create agent with tools - force auto tool usage
-        support_agent = llm.bind_tools(SUPPORT_TOOLS, tool_choice="auto")
+        # Create agent with tools - FORCE tool usage for first call
+        support_agent_with_tools = llm_base.bind_tools(
+            SUPPORT_TOOLS,
+            parallel_tool_calls=False
+        )
 
-        # Invoke agent
+        # For the FIRST call, we configure the LLM to prefer tool usage
+        support_agent_first = llm_base.bind_tools(
+            SUPPORT_TOOLS,
+            tool_choice="any",  # Force at least one tool call
+            parallel_tool_calls=False
+        )
+
+        # Invoke agent with tool requirement
         agent_messages = [SystemMessage(content=system_message)] + messages
-        response = await support_agent.ainvoke(agent_messages)
+
+        logger.info(f"[SUPPORT AGENT] Invoking with {len(agent_messages)} messages")
+        logger.info(f"[SUPPORT AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
+
+        response = await support_agent_first.ainvoke(agent_messages)
 
         # Debug: Log if tools were called
         logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
         logger.info(f"[SUPPORT AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
         if hasattr(response, 'tool_calls'):
             logger.info(f"[SUPPORT AGENT] Tool calls: {response.tool_calls}")
-        logger.info(f"[SUPPORT AGENT] Response content: {response.content[:200] if response.content else 'None'}")
+        else:
+            logger.warning(f"[SUPPORT AGENT] NO TOOL_CALLS - Response content: {response.content}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -590,11 +623,12 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                     tool_call_id=tool_id
                 ))
 
-            # Call agent again with tool results to get final response
-            final_response = await support_agent.ainvoke(agent_messages)
+            # Call agent again with tool results to get final response (without forcing tools)
+            final_response = await support_agent_with_tools.ainvoke(agent_messages)
             response_text = final_response.content
         else:
-            # No tools called, use response directly
+            # No tools called - this should NOT happen with tool_choice="any"
+            logger.error("[SUPPORT AGENT] NO TOOLS CALLED - This should not happen!")
             response_text = response.content if response.content else "I'm here to help you."
 
         thought = f"Support agent processed request (used {len(tool_calls_info)} tools)"
