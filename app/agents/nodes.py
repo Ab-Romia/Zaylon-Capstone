@@ -376,35 +376,38 @@ Examples:
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
     try:
-        # Create agent with tools - FORCE tool usage for first call
-        # Using parallel_tool_calls=False to make it call one tool at a time
-        sales_agent_with_tools = llm_base.bind_tools(
-            SALES_TOOLS,
-            parallel_tool_calls=False
-        )
+        # Create agent with tools - simple binding without forcing
+        sales_agent = llm_base.bind_tools(SALES_TOOLS)
 
-        # For the FIRST call, we configure the LLM to REQUIRE tool usage
-        sales_agent_first = llm_base.bind_tools(
-            SALES_TOOLS,
-            tool_choice="required",  # Force at least one tool call (works with multiple tools)
-            parallel_tool_calls=False
-        )
-
-        # Invoke agent with tool requirement
+        # Build agent messages
         agent_messages = [SystemMessage(content=system_message)] + messages
 
         logger.info(f"[SALES AGENT] Invoking with {len(agent_messages)} messages")
         logger.info(f"[SALES AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
 
-        response = await sales_agent_first.ainvoke(agent_messages)
+        # First attempt - ask nicely
+        response = await sales_agent.ainvoke(agent_messages)
 
-        # Debug: Log if tools were called
+        # Check if tools were called
+        tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+
         logger.info(f"[SALES AGENT] Response type: {type(response)}")
-        logger.info(f"[SALES AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
-        if hasattr(response, 'tool_calls'):
-            logger.info(f"[SALES AGENT] Tool calls: {response.tool_calls}")
-        else:
-            logger.warning(f"[SALES AGENT] NO TOOL_CALLS - Response content: {response.content}")
+        logger.info(f"[SALES AGENT] Tools called on first attempt: {tools_called}")
+
+        # If NO tools called, force a retry with stronger prompting
+        if not tools_called:
+            logger.warning("[SALES AGENT] No tools called - forcing retry with stronger prompt")
+
+            # Add a strong forcing message
+            agent_messages.append(response)  # Add the failed response
+            agent_messages.append(HumanMessage(
+                content="STOP. You MUST call a tool before responding. Call search_products_tool, check_product_availability_tool, create_order_tool, get_order_history_tool, or check_order_status_tool now. Do NOT respond with text - call a tool first."
+            ))
+
+            # Retry
+            response = await sales_agent.ainvoke(agent_messages)
+            tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+            logger.info(f"[SALES AGENT] Tools called on second attempt: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -451,13 +454,13 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                     tool_call_id=tool_id
                 ))
 
-            # Call agent again with tool results to get final response (without forcing tools)
-            final_response = await sales_agent_with_tools.ainvoke(agent_messages)
+            # Call agent again with tool results to get final response
+            final_response = await sales_agent.ainvoke(agent_messages)
             response_text = final_response.content
         else:
-            # No tools called - this should NOT happen with tool_choice="any"
-            logger.error("[SALES AGENT] NO TOOLS CALLED - This should not happen!")
-            response_text = response.content if response.content else "I'm processing your request..."
+            # No tools called even after retry - fallback
+            logger.error("[SALES AGENT] NO TOOLS CALLED even after retry!")
+            response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our product database. Please try again."
 
         thought = f"Sales agent processed request (used {len(tool_calls_info)} tools)"
 
@@ -549,34 +552,38 @@ Examples:
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
     try:
-        # Create agent with tools - FORCE tool usage for first call
-        support_agent_with_tools = llm_base.bind_tools(
-            SUPPORT_TOOLS,
-            parallel_tool_calls=False
-        )
+        # Create agent with tools - simple binding without forcing
+        support_agent = llm_base.bind_tools(SUPPORT_TOOLS)
 
-        # For the FIRST call, we configure the LLM to REQUIRE tool usage
-        support_agent_first = llm_base.bind_tools(
-            SUPPORT_TOOLS,
-            tool_choice="required",  # Force at least one tool call (works with multiple tools)
-            parallel_tool_calls=False
-        )
-
-        # Invoke agent with tool requirement
+        # Build agent messages
         agent_messages = [SystemMessage(content=system_message)] + messages
 
         logger.info(f"[SUPPORT AGENT] Invoking with {len(agent_messages)} messages")
         logger.info(f"[SUPPORT AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
 
-        response = await support_agent_first.ainvoke(agent_messages)
+        # First attempt - ask nicely
+        response = await support_agent.ainvoke(agent_messages)
 
-        # Debug: Log if tools were called
+        # Check if tools were called
+        tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+
         logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
-        logger.info(f"[SUPPORT AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
-        if hasattr(response, 'tool_calls'):
-            logger.info(f"[SUPPORT AGENT] Tool calls: {response.tool_calls}")
-        else:
-            logger.warning(f"[SUPPORT AGENT] NO TOOL_CALLS - Response content: {response.content}")
+        logger.info(f"[SUPPORT AGENT] Tools called on first attempt: {tools_called}")
+
+        # If NO tools called, force a retry with stronger prompting
+        if not tools_called:
+            logger.warning("[SUPPORT AGENT] No tools called - forcing retry with stronger prompt")
+
+            # Add a strong forcing message
+            agent_messages.append(response)  # Add the failed response
+            agent_messages.append(HumanMessage(
+                content="STOP. You MUST call a tool before responding. Call search_knowledge_base_tool, get_order_history_tool, check_order_status_tool, or semantic_product_search_tool now. Do NOT respond with text - call a tool first."
+            ))
+
+            # Retry
+            response = await support_agent.ainvoke(agent_messages)
+            tools_called = hasattr(response, 'tool_calls') and response.tool_calls
+            logger.info(f"[SUPPORT AGENT] Tools called on second attempt: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -623,13 +630,13 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                     tool_call_id=tool_id
                 ))
 
-            # Call agent again with tool results to get final response (without forcing tools)
-            final_response = await support_agent_with_tools.ainvoke(agent_messages)
+            # Call agent again with tool results to get final response
+            final_response = await support_agent.ainvoke(agent_messages)
             response_text = final_response.content
         else:
-            # No tools called - this should NOT happen with tool_choice="any"
-            logger.error("[SUPPORT AGENT] NO TOOLS CALLED - This should not happen!")
-            response_text = response.content if response.content else "I'm here to help you."
+            # No tools called even after retry - fallback
+            logger.error("[SUPPORT AGENT] NO TOOLS CALLED even after retry!")
+            response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our support systems. Please try again or contact our support team directly."
 
         thought = f"Support agent processed request (used {len(tool_calls_info)} tools)"
 

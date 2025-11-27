@@ -3,6 +3,7 @@ Vector database service using Qdrant.
 Manages collections, indexing, and similarity search.
 """
 import logging
+import warnings
 from typing import List, Dict, Any, Optional, Tuple
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -11,6 +12,10 @@ from qdrant_client.models import (
     ScoredPoint, PointIdsList
 )
 from config import get_settings
+
+# Suppress Pydantic validation warnings from Qdrant client
+# Qdrant server returns config fields that the Python client's Pydantic models don't expect
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
