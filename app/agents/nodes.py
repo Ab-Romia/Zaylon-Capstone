@@ -147,7 +147,7 @@ Return ONLY valid JSON array, no other text."""),
             ("human", "{message}")
         ])
 
-        extraction_chain = extraction_prompt | llm
+        extraction_chain = extraction_prompt | llm_base
         response = await extraction_chain.ainvoke({"message": last_user_message})
 
         # Parse extracted facts
@@ -383,10 +383,10 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
             parallel_tool_calls=False
         )
 
-        # For the FIRST call, we configure the LLM to prefer tool usage
+        # For the FIRST call, we configure the LLM to REQUIRE tool usage
         sales_agent_first = llm_base.bind_tools(
             SALES_TOOLS,
-            tool_choice="any",  # Force at least one tool call
+            tool_choice="required",  # Force at least one tool call (works with multiple tools)
             parallel_tool_calls=False
         )
 
@@ -555,10 +555,10 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
             parallel_tool_calls=False
         )
 
-        # For the FIRST call, we configure the LLM to prefer tool usage
+        # For the FIRST call, we configure the LLM to REQUIRE tool usage
         support_agent_first = llm_base.bind_tools(
             SUPPORT_TOOLS,
-            tool_choice="any",  # Force at least one tool call
+            tool_choice="required",  # Force at least one tool call (works with multiple tools)
             parallel_tool_calls=False
         )
 
