@@ -35,8 +35,12 @@ tiktoken==0.5.2
 langchain==0.1.0
 langchain-community==0.0.13
 langchain-openai==0.0.5
+langchain-google-genai==0.0.11  # Google Gemini support
 langgraph==0.0.20
 # REMOVED: langsmith==0.0.80 (Let langchain install the compatible version)
+
+# Google Gemini
+google-generativeai==0.4.1  # For embeddings and direct API access
 
 # Text Processing
 pypdf==4.0.0

@@ -63,6 +63,14 @@ async def lifespan(app: FastAPI):
         if vector_db.is_connected():
             await init_vector_db(embedding_dim)
             logger.info("Vector database (Qdrant) initialized")
+
+            # Populate knowledge base with FAQs
+            try:
+                from scripts.populate_knowledge_base import populate_knowledge_base
+                success, failed = await populate_knowledge_base()
+                logger.info(f"Knowledge base populated: {success} docs indexed, {failed} failed")
+            except Exception as kb_error:
+                logger.warning(f"Knowledge base population skipped: {kb_error}")
         else:
             logger.warning("Vector database not connected - RAG features will be limited")
     except Exception as e:

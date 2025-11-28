@@ -43,12 +43,25 @@ class Settings(BaseSettings):
     qdrant_collection_products: str = "products"
     qdrant_collection_knowledge: str = "knowledge_base"
 
-    # Embeddings & LLM
+    # LLM Provider Choice
+    llm_provider: str = "openai"  # Options: "openai" or "gemini"
+
+    # OpenAI Settings
     openai_api_key: Optional[str] = None  # For OpenAI embeddings and agents
+    openai_chat_model: str = "gpt-4o"  # Main agent model
+    openai_chat_model_mini: str = "gpt-4o-mini"  # Supervisor/routing model
+
+    # Gemini Settings
+    gemini_api_key: Optional[str] = None  # For Google Gemini
+    gemini_chat_model: str = "gemini-1.5-pro"  # Main agent model (supports 1M context, tool calling)
+    gemini_chat_model_mini: str = "gemini-1.5-flash"  # Faster, cheaper model for routing
+
+    # Embeddings
     embedding_model: str = "text-embedding-3-small"  # OpenAI model
+    gemini_embedding_model: str = "models/text-embedding-004"  # Gemini embedding model
     local_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # For Arabic/multilingual
-    use_local_embeddings: bool = False  # Set to True to use local models instead of OpenAI
-    embedding_dimension: int = 1536  # OpenAI: 1536, local: 384
+    use_local_embeddings: bool = False  # Set to True to use local models instead of cloud
+    embedding_dimension: int = 1536  # OpenAI: 1536, Gemini: 768, local: 384
 
     # RAG Retrieval Settings
     rag_top_k: int = 5  # Number of documents to retrieve

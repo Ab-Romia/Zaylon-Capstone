@@ -4,6 +4,8 @@ Manages collections, indexing, and similarity search.
 """
 import logging
 import warnings
+import uuid
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Tuple
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -13,9 +15,23 @@ from qdrant_client.models import (
 )
 from config import get_settings
 
-# Suppress Pydantic validation warnings from Qdrant client
+# Suppress Pydantic validation warnings from Qdrant client globally
 # Qdrant server returns config fields that the Python client's Pydantic models don't expect
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+
+# Suppress Qdrant "unsecure connection" warning for local development
+# This is safe for local Qdrant instances (http://localhost:6333)
+warnings.filterwarnings("ignore", message=".*Api key is used with unsecure connection.*")
+
+
+@contextmanager
+def suppress_pydantic_warnings():
+    """Context manager to suppress Pydantic validation warnings from Qdrant responses."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*validation error.*")
+        warnings.filterwarnings("ignore", message=".*Extra inputs are not permitted.*")
+        warnings.filterwarnings("ignore", message=".*Input should be a valid.*")
+        yield
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -36,12 +52,23 @@ class VectorDatabase:
         """Connect to Qdrant instance."""
         try:
             logger.info(f"Connecting to Qdrant at {self.settings.qdrant_url}")
-            self.client = QdrantClient(
-                url=self.settings.qdrant_url,
-                api_key=self.settings.qdrant_api_key,
-                timeout=10.0
-            )
+
+            # Suppress warnings during connection
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                self.client = QdrantClient(
+                    url=self.settings.qdrant_url,
+                    api_key=self.settings.qdrant_api_key,
+                    timeout=10.0
+                )
+
+            # Test the connection
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                self.client.get_collections()
+
             logger.info("Successfully connected to Qdrant")
+
         except Exception as e:
             logger.error(f"Failed to connect to Qdrant: {e}")
             # Don't raise - allow service to start, operations will fail gracefully
@@ -51,10 +78,16 @@ class VectorDatabase:
         """Check if connected to Qdrant."""
         if not self.client:
             return False
+
         try:
-            self.client.get_collections()
+            # Suppress warnings during connection check
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                # Quick connection test
+                self.client.get_collections()
             return True
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Qdrant connection check failed: {e}")
             return False
 
     async def init_collections(self, embedding_dimension: int):
@@ -92,8 +125,9 @@ class VectorDatabase:
                 else:
                     # Validate existing collection has matching dimension
                     try:
-                        collection_info = self.client.get_collection(collection_name)
-                        existing_dim = collection_info.config.params.vectors.size
+                        with suppress_pydantic_warnings():
+                            collection_info = self.client.get_collection(collection_name)
+                            existing_dim = collection_info.config.params.vectors.size
                         if existing_dim != embedding_dimension:
                             logger.warning(
                                 f"Collection {collection_name} exists with dimension {existing_dim}, "
@@ -130,6 +164,8 @@ class VectorDatabase:
             return True  # Not an error, just nothing to do
 
         try:
+            import json
+
             point_structs = []
             for point_id, vector, payload in points:
                 # Validate inputs
@@ -139,11 +175,39 @@ class VectorDatabase:
                 if payload is None:
                     payload = {}
 
+                # Qdrant requires point IDs to be either UUID strings or integers
+                # Preserve the type - don't convert integers to strings
+                if isinstance(point_id, int):
+                    final_id = point_id
+                else:
+                    # Ensure string IDs are valid UUIDs or keep as string
+                    final_id = str(point_id) if point_id else str(uuid.uuid4())
+
+                # Convert vector to list if it's numpy array
+                if hasattr(vector, 'tolist'):
+                    vector = vector.tolist()
+
+                # Ensure vector is a flat list of floats
+                if not isinstance(vector, list):
+                    vector = list(vector)
+
+                # Clean payload to ensure it's JSON-serializable
+                # Remove any non-serializable types
+                clean_payload = {}
+                for key, value in payload.items():
+                    try:
+                        # Test if value is JSON-serializable
+                        json.dumps(value)
+                        clean_payload[key] = value
+                    except (TypeError, ValueError):
+                        # Convert non-serializable types to string
+                        clean_payload[key] = str(value)
+
                 point_structs.append(
                     PointStruct(
-                        id=point_id,
+                        id=final_id,  # Use properly typed ID
                         vector=vector,
-                        payload=payload
+                        payload=clean_payload
                     )
                 )
 
@@ -151,14 +215,19 @@ class VectorDatabase:
                 logger.warning("No valid points to upsert after validation")
                 return False
 
-            self.client.upsert(
-                collection_name=collection_name,
-                points=point_structs
-            )
+            # Upsert points with proper error handling
+            with suppress_pydantic_warnings():
+                self.client.upsert(
+                    collection_name=collection_name,
+                    points=point_structs
+                )
             logger.info(f"Upserted {len(point_structs)} points to {collection_name}")
             return True
         except Exception as e:
             logger.error(f"Failed to upsert points: {e}")
+            # Log the first point for debugging
+            if points:
+                logger.debug(f"Sample point structure: {points[0]}")
             return False
 
     async def search(
@@ -274,7 +343,8 @@ class VectorDatabase:
             return None
 
         try:
-            info = self.client.get_collection(collection_name)
+            with suppress_pydantic_warnings():
+                info = self.client.get_collection(collection_name)
             return {
                 "name": collection_name,
                 "vectors_count": info.vectors_count,
@@ -299,7 +369,8 @@ class VectorDatabase:
             return 0
 
         try:
-            info = self.client.get_collection(collection_name)
+            with suppress_pydantic_warnings():
+                info = self.client.get_collection(collection_name)
             return info.points_count or 0
         except Exception:
             return 0

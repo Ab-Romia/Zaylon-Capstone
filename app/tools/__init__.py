@@ -30,6 +30,8 @@ SALES_TOOLS = [
     create_order_tool,
     get_order_history_tool,
     check_order_status_tool,
+    save_customer_fact_tool,  # Allow sales agent to save preferences
+    search_knowledge_base_tool,  # Allow sales agent to handle FAQ questions in mixed queries
 ]
 
 SUPPORT_TOOLS = [

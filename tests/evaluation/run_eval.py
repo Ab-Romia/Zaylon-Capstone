@@ -13,10 +13,19 @@ from pathlib import Path
 from typing import Dict, List, Any
 
 import pandas as pd
-from openai import AsyncOpenAI
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Load .env file if it exists
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✓ Loaded environment variables from {env_path}")
+except ImportError:
+    print("⚠ python-dotenv not installed, reading from system environment only")
 
 # Try to import httpx
 try:
@@ -31,15 +40,91 @@ except ImportError:
 # Configuration
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_KEY = os.getenv("API_KEY", "Xg-XWT6bR1ZdssyX6kZ9jI2DbrX__EZRgYeTvTFIkjY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not OPENAI_API_KEY:
-    print("ERROR: OPENAI_API_KEY environment variable not set")
-    print("Please set it with: export OPENAI_API_KEY='your-key-here'")
+# LLM Judge Provider Configuration
+# Auto-detect provider based on available API keys
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Allow manual override via JUDGE_PROVIDER env var
+JUDGE_PROVIDER_OVERRIDE = os.getenv("JUDGE_PROVIDER", "").lower()
+
+# Initialize judge client based on available keys
+judge_client = None
+judge_model = None
+JUDGE_PROVIDER = None
+
+def init_judge_provider():
+    """Initialize the judge provider based on available API keys."""
+    global judge_client, judge_model, JUDGE_PROVIDER
+
+    # If user explicitly set JUDGE_PROVIDER, try that first
+    if JUDGE_PROVIDER_OVERRIDE == "gemini":
+        if GEMINI_API_KEY:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=GEMINI_API_KEY)
+                judge_client = genai
+                judge_model = "gemini-2.5-flash"
+                JUDGE_PROVIDER = "gemini"
+                print(f"✓ Using Gemini ({judge_model}) as LLM judge (cost-effective!)")
+                return True
+            except Exception as e:
+                print(f"⚠ Failed to initialize Gemini: {e}")
+        else:
+            print("⚠ JUDGE_PROVIDER=gemini but GEMINI_API_KEY not set")
+
+    elif JUDGE_PROVIDER_OVERRIDE == "openai":
+        if OPENAI_API_KEY:
+            try:
+                from openai import AsyncOpenAI
+                judge_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+                judge_model = "gpt-4o-mini"
+                JUDGE_PROVIDER = "openai"
+                print(f"✓ Using OpenAI ({judge_model}) as LLM judge")
+                return True
+            except Exception as e:
+                print(f"⚠ Failed to initialize OpenAI: {e}")
+        else:
+            print("⚠ JUDGE_PROVIDER=openai but OPENAI_API_KEY not set")
+
+    # Auto-detect: Try Gemini first (cheaper), then OpenAI
+    if GEMINI_API_KEY:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=GEMINI_API_KEY)
+            judge_client = genai
+            judge_model = "gemini-2.5-flash"
+            JUDGE_PROVIDER = "gemini"
+            print(f"✓ Auto-detected Gemini API key, using {judge_model} as LLM judge (cost-effective!)")
+            print("💡 Tip: Set JUDGE_PROVIDER=openai to use OpenAI instead")
+            return True
+        except Exception as e:
+            print(f"⚠ Gemini initialization failed: {e}")
+
+    if OPENAI_API_KEY:
+        try:
+            from openai import AsyncOpenAI
+            judge_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+            judge_model = "gpt-4o-mini"
+            JUDGE_PROVIDER = "openai"
+            print(f"✓ Auto-detected OpenAI API key, using {judge_model} as LLM judge")
+            return True
+        except Exception as e:
+            print(f"⚠ OpenAI initialization failed: {e}")
+
+    # No API keys available
+    print("\n❌ ERROR: No LLM API key found for evaluation judge!")
+    print("\nPlease set one of the following:")
+    print("  1. export GEMINI_API_KEY='your-gemini-key' (recommended, 70% cheaper)")
+    print("  2. export OPENAI_API_KEY='your-openai-key'")
+    print("\nGet keys from:")
+    print("  - Gemini: https://aistudio.google.com (FREE tier available)")
+    print("  - OpenAI: https://platform.openai.com")
     sys.exit(1)
 
-# Initialize OpenAI client
-openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+# Initialize the judge provider
+init_judge_provider()
 
 # Evaluation rubric for LLM judge
 JUDGE_PROMPT = """You are an expert evaluator for an AI e-commerce agent. Evaluate the agent's response based on the following criteria:
@@ -141,19 +226,34 @@ async def judge_response(
     )
 
     try:
-        # Call GPT-4 as judge
-        completion = await openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are an expert AI agent evaluator. Respond only with valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=500
-        )
+        judgment_text = None
 
-        # Parse the JSON response
-        judgment_text = completion.choices[0].message.content.strip()
+        if JUDGE_PROVIDER == "gemini":
+            # Call Gemini as judge
+            model = judge_client.GenerativeModel(judge_model)
+            full_prompt = "You are an expert AI agent evaluator. Respond only with valid JSON.\n\n" + prompt
+
+            response = model.generate_content(
+                full_prompt,
+                generation_config={
+                    "temperature": 0.3,
+                    "max_output_tokens": 500
+                }
+            )
+            judgment_text = response.text.strip()
+
+        else:
+            # Call OpenAI as judge
+            completion = await judge_client.chat.completions.create(
+                model=judge_model,
+                messages=[
+                    {"role": "system", "content": "You are an expert AI agent evaluator. Respond only with valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            judgment_text = completion.choices[0].message.content.strip()
 
         # Handle markdown code blocks if present
         if judgment_text.startswith("```"):
@@ -260,7 +360,8 @@ async def run_evaluation():
     print("="*80)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"API Base URL: {BASE_URL}")
-    print(f"Judge Model: gpt-4o")
+    print(f"Judge Provider: {JUDGE_PROVIDER.upper()}")
+    print(f"Judge Model: {judge_model}")
     print("="*80)
 
     # Load golden dataset
@@ -349,7 +450,8 @@ async def generate_report(metrics: Dict[str, Any], results_df: pd.DataFrame):
     report = f"""# Flowinit Agent Evaluation Report
 
 **Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-**Evaluation Method**: LLM-as-a-Judge (GPT-4o)
+**Evaluation Method**: LLM-as-a-Judge ({judge_model})
+**Judge Provider**: {JUDGE_PROVIDER.upper()}
 **Golden Dataset**: 30 test cases (Easy/Medium/Hard)
 
 ---
@@ -506,7 +608,7 @@ The system is **production-ready** for deployment in an e-commerce customer serv
 
 ## Methodology
 
-**LLM-as-a-Judge**: Each agent response was evaluated by GPT-4o across four dimensions:
+**LLM-as-a-Judge**: Each agent response was evaluated by {judge_model} across four dimensions:
 - **Intent Accuracy**: Correct routing to sales/support
 - **Tool Selection**: Appropriate tool calls
 - **Response Quality**: Helpfulness, politeness, language match
@@ -534,7 +636,13 @@ The system is **production-ready** for deployment in an e-commerce customer serv
 if __name__ == "__main__":
     print("\n🚀 Starting Flowinit Agent Evaluation...")
     print("⚠️  Make sure the API server is running on http://localhost:8000")
-    print("⚠️  Make sure OPENAI_API_KEY is set in environment\n")
+
+    if JUDGE_PROVIDER == "gemini":
+        print("⚠️  Using Gemini as judge - make sure GEMINI_API_KEY is set")
+    else:
+        print("⚠️  Using OpenAI as judge - make sure OPENAI_API_KEY is set")
+
+    print("💡 Tip: Set JUDGE_PROVIDER=gemini to use Gemini (cheaper for evaluation!)\n")
 
     try:
         asyncio.run(run_evaluation())

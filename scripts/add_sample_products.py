@@ -96,6 +96,96 @@ SAMPLE_PRODUCTS = [
         "stock_count": 12,
         "description": "معطف شتوي دافئ ومقاوم للماء - Warm winter coat, water resistant",
         "is_active": True
+    },
+    {
+        "name": "Urban Hoodie",
+        "price": 45.00,
+        "sizes": ["XS", "S", "M", "L", "XL"],
+        "colors": ["Heather Grey", "Charcoal", "Olive", "Red"],
+        "stock_count": 40,
+        "description": "Heavyweight fleece hoodie with a kangaroo pocket. Perfect for layering in colder weather.",
+        "is_active": True
+    },
+    {
+        "name": "Classic Cotton T-Shirt",
+        "price": 24.99,
+        "sizes": ["S", "M", "L", "XL", "XXL"],
+        "colors": ["White", "Black", "Navy Blue", "Red"],
+        "stock_count": 150,
+        "description": "A premium basic t-shirt made from 100% organic cotton. Breathable and perfect for daily wear.",
+        "is_active": True
+    },
+    {
+        "name": "Black Leather Jacket",
+        "price": 1099.99,
+        "sizes": ["S", "M", "L", "XL"],
+        "colors": ["Black"],
+        "stock_count": 18,
+        "description": "Premium black leather jacket with modern fit. Perfect for fall and winter.",
+        "is_active": True
+    },
+    {
+        "name": "Slim Fit Jeans",
+        "price": 399.99,
+        "sizes": ["28", "30", "32", "34", "36"],
+        "colors": ["Dark Wash", "Light Wash", "Black"],
+        "stock_count": 55,
+        "description": "Modern slim fit jeans with stretch for comfort. Perfect for everyday wear.",
+        "is_active": True
+    },
+    {
+        "name": "Comfortable Sport Pants",
+        "price": 249.99,
+        "sizes": ["S", "M", "L", "XL"],
+        "colors": ["Black", "Grey", "Navy"],
+        "stock_count": 70,
+        "description": "Lightweight and breathable sport pants. Perfect for workouts and casual wear.",
+        "is_active": True
+    },
+    {
+        "name": "Winter Sweater",
+        "price": 349.99,
+        "sizes": ["S", "M", "L", "XL"],
+        "colors": ["Charcoal", "Navy", "Burgundy"],
+        "stock_count": 35,
+        "description": "Warm knit sweater perfect for cold weather. Soft and comfortable.",
+        "is_active": True
+    },
+    {
+        "name": "بنطلون كلاسيك أسود - Classic Black Pants",
+        "price": 379.99,
+        "sizes": ["30", "32", "34", "36", "38"],
+        "colors": ["أسود", "Black"],
+        "stock_count": 45,
+        "description": "بنطلون كلاسيك أسود للعمل والمناسبات - Classic black pants for work and formal occasions",
+        "is_active": True
+    },
+    {
+        "name": "هودي رياضي - Athletic Hoodie",
+        "price": 299.99,
+        "sizes": ["M", "L", "XL", "XXL"],
+        "colors": ["أسود", "Black", "رمادي", "Grey", "أزرق", "Blue"],
+        "stock_count": 50,
+        "description": "هودي رياضي مريح ودافئ - Comfortable and warm athletic hoodie",
+        "is_active": True
+    },
+    {
+        "name": "Blue Casual Shirt",
+        "price": 229.99,
+        "sizes": ["S", "M", "L", "XL"],
+        "colors": ["Light Blue", "Royal Blue"],
+        "stock_count": 60,
+        "description": "Casual blue shirt perfect for everyday wear. Comfortable cotton blend.",
+        "is_active": True
+    },
+    {
+        "name": "Best Seller - Premium Hoodie",
+        "price": 499.99,
+        "sizes": ["S", "M", "L", "XL"],
+        "colors": ["Black", "Grey", "Navy"],
+        "stock_count": 80,
+        "description": "Our best-selling premium hoodie. Ultra-soft fabric with perfect fit. Customer favorite!",
+        "is_active": True
     }
 ]
 

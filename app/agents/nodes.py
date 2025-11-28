@@ -16,24 +16,61 @@ from app.tools import (
     get_customer_facts_tool, save_customer_fact_tool
 )
 from config import get_settings
+from services.llm_factory import get_chat_llm, get_provider_name
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Initialize LLM for agents - use gpt-4o for reliable tool calling
-# Note: We create agents dynamically with tool_choice in each node
-llm_base = ChatOpenAI(
-    model="gpt-4o",  # Better function calling than mini
-    temperature=0,
-    api_key=settings.openai_api_key
-)
+# Initialize LLM for agents using provider factory (supports OpenAI and Gemini)
+# The provider is configured in .env via LLM_PROVIDER
+try:
+    llm_base = get_chat_llm(use_mini=False)  # Main agent model (gpt-4o or gemini-1.5-pro)
+    supervisor_llm = get_chat_llm(use_mini=True)  # Routing model (gpt-4o-mini or gemini-1.5-flash)
+    logger.info(f"Initialized LLM provider: {get_provider_name()}")
+except Exception as e:
+    logger.error(f"Failed to initialize LLM provider: {e}")
+    raise
 
-# Initialize LLM for supervisor with structured output
-supervisor_llm = ChatOpenAI(
-    model="gpt-4o-mini",  # Mini is fine for simple routing
-    temperature=0,
-    api_key=settings.openai_api_key
-)
+
+def get_tool_calls(response):
+    """
+    Robust extraction of tool calls from AIMessage.
+    Handles different LangChain versions and response formats.
+
+    Returns:
+        List of tool calls, or empty list if none found
+    """
+    # Debug: log response structure
+    logger.debug(f"[TOOL_CALL_DETECTION] Response type: {type(response)}")
+    logger.debug(f"[TOOL_CALL_DETECTION] Response dir: {[a for a in dir(response) if not a.startswith('_')]}")
+
+    # Try direct attribute access (newer LangChain)
+    if hasattr(response, 'tool_calls'):
+        logger.debug(f"[TOOL_CALL_DETECTION] Has tool_calls attr, value: {response.tool_calls}")
+        if response.tool_calls:
+            return response.tool_calls
+
+    # Try additional_kwargs (some versions store it here)
+    if hasattr(response, 'additional_kwargs'):
+        logger.debug(f"[TOOL_CALL_DETECTION] additional_kwargs: {response.additional_kwargs}")
+        tool_calls = response.additional_kwargs.get('tool_calls', [])
+        if tool_calls:
+            logger.debug(f"[TOOL_CALL_DETECTION] Found tool_calls in additional_kwargs: {tool_calls}")
+            return tool_calls
+
+        # Try function_call (older OpenAI format)
+        function_call = response.additional_kwargs.get('function_call')
+        if function_call:
+            logger.debug(f"[TOOL_CALL_DETECTION] Found function_call in additional_kwargs: {function_call}")
+            # Convert old format to new format
+            return [{
+                'name': function_call.get('name'),
+                'args': json.loads(function_call.get('arguments', '{}')),
+                'id': 'legacy_call'
+            }]
+
+    logger.debug("[TOOL_CALL_DETECTION] No tool calls found")
+    return []
 
 
 # ============================================================================
@@ -258,14 +295,35 @@ async def supervisor_node(state: FlowinitState) -> Dict[str, Any]:
 {profile_summary}
 
 **Available Agents**:
-1. **Sales Agent**: Handles buying, product inquiries, orders, purchases, checkout, availability checks
-2. **Support Agent**: Handles FAQs, policies, returns, exchanges, order tracking, general questions
+1. **Sales Agent**: Handles product searches, purchases, ordering, product availability, order history, AND can assist with product-related returns
+2. **Support Agent**: Handles ONLY FAQs, policies, general inquiries (NOT specific to customer's orders/purchases)
 
-**Routing Rules**:
-- If the message is about BUYING, ORDERING, PRODUCTS, AVAILABILITY → Route to **Sales**
-- If the message is about POLICIES, RETURNS, TRACKING, QUESTIONS, HELP → Route to **Support**
-- If mixed intent (e.g., "return old order and buy new one") → Route to **Sales** (they can handle both)
-- If unclear → Route to **Support** (safer default)
+**CRITICAL ROUTING RULES** (Follow Strictly - Prefer SALES for mixed or unclear queries):
+
+**Route to SALES if asking about:**
+- Product searches ("Show me hoodies", "عايز بنطلون", "I want a shirt", "blue shirt")
+- Product availability ("Do you have this in stock?", "What sizes?", "What colors?")
+- Prices ("How much is?", "Show me cheap products", "price of hoodie")
+- Making purchases ("I want to buy", "3ayz a3ml order", "I want to purchase")
+- Product recommendations ("Best sellers", "For winter", "comfortable clothes")
+- Saving preferences ("I prefer red", "I like size M")
+- Mixed queries combining products + policies ("Tell me about shipping times, and also I want a black jacket")
+- Mixed queries combining returns + purchases ("I want to return my last order and buy a blue shirt")
+- Anything product-specific or purchase-related
+
+**Route to SUPPORT ONLY if asking about:**
+- General policies WITHOUT product interest ("What's your return policy?", "What payment methods?")
+- Shipping information WITHOUT ordering ("Do you ship to Cairo?", "How long is shipping?")
+- Order tracking ("Where is my order?", "Order status?", "فين طلبي؟")
+- Order modifications ("Can I change my order?", "Cancel my order")
+- Complaints ("Damaged item", "Wrong product")
+- General FAQs that don't involve products ("How to cancel?")
+
+**Mixed Intent - DEFAULT TO SALES**:
+- If BOTH products AND policy questions → Route to **SALES** (Sales can search KB if needed)
+- If BOTH returns AND purchases → Route to **SALES**
+- If unclear or ambiguous → Route to **SALES** (better equipped)
+- ONLY route to Support if it's purely FAQ/policy with NO product interest
 
 **Your Decision**:
 Respond with ONLY one word: "sales" or "support"
@@ -341,6 +399,13 @@ async def sales_agent_node(state: FlowinitState) -> Dict[str, Any]:
 **MANDATORY TOOL USAGE RULES**:
 You have NO product information in your memory. You MUST call tools for ANY product-related query.
 
+**PERSONALIZATION - PROACTIVE MEMORY USAGE**:
+- ALWAYS consider the customer's profile above when making recommendations
+- If customer asks "in my size" or "my favorite color" → Their preferences are ALREADY shown in the profile above, use them directly
+- If no preferences shown but customer refers to "my size/color" → Ask them to specify
+- Use preferences to enhance search queries (e.g., if they prefer red, prioritize red items)
+- If customer states a NEW preference ("I prefer red", "I like size M") → call save_customer_fact_tool FIRST
+
 **When customer asks about products/prices/stock → IMMEDIATELY call search_products_tool**
 Examples:
 - "I want a red hoodie" → call search_products_tool(query="red hoodie")
@@ -348,23 +413,40 @@ Examples:
 - "3ayez jeans azra2" → call search_products_tool(query="jeans azra2")
 - "Show me hoodies" → call search_products_tool(query="hoodies")
 - "What's the price of the red hoodie?" → call search_products_tool(query="red hoodie")
+- "Do you have that hoodie in my size?" → Check customer profile above for preferred_size, then search with that size
+
+**When customer states preferences → call save_customer_fact_tool**
+Examples:
+- "I prefer red colors and size M" → call save_customer_fact_tool twice (once for color, once for size)
+- "I like large sizes" → call save_customer_fact_tool(fact_key="preferred_size", fact_value="L", ...)
+
+**When customer asks about policies/FAQs in addition to products → call search_knowledge_base_tool**
+Examples:
+- "Tell me about shipping times, and also I want a black jacket" → call search_knowledge_base_tool(query="shipping times") AND search_products_tool(query="black jacket")
+- "What's your return policy and show me blue shirts" → call both tools
 
 **When customer wants to buy/order → call create_order_tool**
 Examples:
 - "I want to buy size L" → call create_order_tool(...)
 - "3ayz a3ml order" → call create_order_tool(...)
 
-**When customer asks about order status → call check_order_status_tool**
+**When customer asks about order status/history → call get_order_history_tool or check_order_status_tool**
 Examples:
-- "Where is my order?" → call check_order_status_tool(...)
-- "Order status?" → call check_order_status_tool(...)
+- "Where is my order?" → call get_order_history_tool(customer_id="{customer_id}")
+- "Order status?" → call get_order_history_tool(customer_id="{customer_id}")
+- "I want to reorder my last purchase" → call get_order_history_tool(customer_id="{customer_id}") first
 
 **CRITICAL RULES**:
 1. NEVER respond without calling a tool first for product/order queries
 2. NEVER say "I'm processing your request" - call the tool immediately
 3. NEVER make up product information - use tools only
-4. Support Arabic, Franco-Arabic, and English equally
-5. After getting tool results, provide a natural, helpful response in the customer's language
+4. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
+   - English input → English response
+   - Arabic input (عربي) → Arabic response (عربي)
+   - Franco-Arabic input (3ayez, 7aga, etc.) → Franco-Arabic response
+   - Detect Franco-Arabic by numbers in text: 3=ع, 7=ح, 2=أ, 5=خ, 8=ق, 9=ص
+5. After getting tool results, provide a natural, helpful response in the customer's EXACT language
+6. ALWAYS use customer preferences from profile when available
 
 **Available Tools**:
 - search_products_tool(query, limit=5) - Search products by keyword
@@ -372,6 +454,7 @@ Examples:
 - create_order_tool(customer_id, product_id, quantity, size, color, name, phone, address) - Create order
 - get_order_history_tool(customer_id) - Get customer's past orders
 - check_order_status_tool(order_id) - Check specific order status
+- save_customer_fact_tool(customer_id, fact_type, fact_key, fact_value, confidence, source) - Save customer preferences
 
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
@@ -388,56 +471,67 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
         # First attempt - ask nicely
         response = await sales_agent.ainvoke(agent_messages)
 
-        # Check if tools were called - robust checking
-        tools_called = (
-            hasattr(response, 'tool_calls') and
-            response.tool_calls is not None and
-            isinstance(response.tool_calls, list) and
-            len(response.tool_calls) > 0
-        )
+        # Check if tools were called - robust checking using helper function
+        tool_calls_list = get_tool_calls(response)
+        tools_called = len(tool_calls_list) > 0
 
         logger.info(f"[SALES AGENT] Response type: {type(response)}")
-        logger.info(f"[SALES AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
-        logger.info(f"[SALES AGENT] tool_calls value: {getattr(response, 'tool_calls', 'N/A')}")
+        logger.info(f"[SALES AGENT] Tool calls found: {len(tool_calls_list)}")
+        logger.info(f"[SALES AGENT] Tool calls: {tool_calls_list[:100] if tool_calls_list else 'None'}")
         logger.info(f"[SALES AGENT] Tools called on first attempt: {tools_called}")
 
         # If NO tools called, force a retry with stronger prompting
         if not tools_called:
             logger.warning("[SALES AGENT] No tools called - forcing retry with stronger prompt")
 
-            # IMPORTANT: Only append response if it's pure text (no tool_calls)
-            # If it has tool_calls, we must NOT append it without executing them
-            if not (hasattr(response, 'tool_calls') and response.tool_calls):
-                agent_messages.append(response)
+            # CRITICAL: Do NOT append the first response to avoid OpenAI 400 errors
+            # The response without tool calls is useless anyway, and may have internal
+            # state that causes "tool_calls must be followed by tool messages" errors
 
-            # Add a strong forcing message
+            # Add a strong forcing message directly
             agent_messages.append(HumanMessage(
                 content="STOP. You MUST call a tool before responding. Call search_products_tool, check_product_availability_tool, create_order_tool, get_order_history_tool, or check_order_status_tool now. Do NOT respond with text - call a tool first."
             ))
 
             # Retry
             response = await sales_agent.ainvoke(agent_messages)
-            tools_called = (
-                hasattr(response, 'tool_calls') and
-                response.tool_calls is not None and
-                isinstance(response.tool_calls, list) and
-                len(response.tool_calls) > 0
-            )
+            tool_calls_list = get_tool_calls(response)
+            tools_called = len(tool_calls_list) > 0
             logger.info(f"[SALES AGENT] Tools called on second attempt: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
-        if hasattr(response, 'tool_calls') and response.tool_calls and len(response.tool_calls) > 0:
+        if tools_called:
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
             agent_messages.append(response)
 
             # Execute each tool call
-            for tool_call in response.tool_calls:
-                tool_name = tool_call.get("name")
-                tool_args = tool_call.get("args", {})
-                tool_id = tool_call.get("id", str(len(tool_calls_info)))
+            for tool_call in tool_calls_list:
+                # Handle multiple formats: OpenAI function format, LangChain dict, or LangChain object
+                if isinstance(tool_call, dict):
+                    # OpenAI format: {'id': '...', 'function': {'name': '...', 'arguments': '...'}, 'type': 'function'}
+                    if 'function' in tool_call:
+                        tool_name = tool_call['function'].get('name')
+                        args_str = tool_call['function'].get('arguments', '{}')
+                        tool_args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                        tool_id = tool_call.get('id', str(len(tool_calls_info)))
+                    # LangChain format: {'name': '...', 'args': {...}, 'id': '...'}
+                    else:
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("args", {})
+                        tool_id = tool_call.get("id", str(len(tool_calls_info)))
+                else:
+                    # Object format (has attributes)
+                    tool_name = getattr(tool_call, "name", None)
+                    tool_args = getattr(tool_call, "args", {})
+                    tool_id = getattr(tool_call, "id", str(len(tool_calls_info)))
+
+                # Skip invalid tool calls
+                if not tool_name:
+                    logger.warning(f"[SALES AGENT] Skipping tool call with no name: {tool_call}")
+                    continue
 
                 logger.info(f"[SALES AGENT] Executing tool: {tool_name} with args: {tool_args}")
 
@@ -472,7 +566,7 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
             # Call agent again with tool results to get final response
             final_response = await sales_agent.ainvoke(agent_messages)
-            response_text = final_response.content
+            response_text = final_response.content if final_response.content else "Based on the search results above, I'm ready to help you. Could you provide more details about what you're looking for?"
         else:
             # No tools called even after retry - fallback
             logger.error("[SALES AGENT] NO TOOLS CALLED even after retry!")
@@ -535,17 +629,22 @@ async def support_agent_node(state: FlowinitState) -> Dict[str, Any]:
 **MANDATORY TOOL USAGE RULES**:
 You have NO policy information or order data in your memory. You MUST call tools for ANY support query.
 
-**When customer asks about policies/returns/shipping → IMMEDIATELY call search_knowledge_base_tool**
+**When customer asks about policies/returns/shipping/payment → IMMEDIATELY call search_knowledge_base_tool**
 Examples:
 - "What are your return policies?" → call search_knowledge_base_tool(query="return policy")
 - "How long does shipping take?" → call search_knowledge_base_tool(query="shipping time")
+- "Do you ship to Cairo?" → call search_knowledge_base_tool(query="shipping locations")
+- "What payment methods do you accept?" → call search_knowledge_base_tool(query="payment methods")
 - "Can I get a refund?" → call search_knowledge_base_tool(query="refund policy")
+- "How do I cancel my order?" → call search_knowledge_base_tool(query="order cancellation")
+- "I received a damaged item" → call search_knowledge_base_tool(query="damaged item policy")
 
-**When customer asks about their orders → call get_order_history_tool OR check_order_status_tool**
-Examples:
-- "Where is my order?" → call get_order_history_tool(customer_id=...)
-- "Track order #12345" → call check_order_status_tool(order_id="12345")
-- "What orders do I have?" → call get_order_history_tool(customer_id=...)
+**IMPORTANT - Order Tracking Tool Selection**:
+- "Where is my order?" / "فين طلبي؟" / "Order status?" WITHOUT order number → call get_order_history_tool(customer_id="{customer_id}") to see ALL orders, then identify the most recent one
+- "Track order #12345" / "Order status #12345" WITH specific order number → call check_order_status_tool(order_id="12345") for SPECIFIC order
+- "Can I change my order?" WITHOUT order number → call get_order_history_tool first to find their orders
+- "Can I change order #12345?" WITH order number → call check_order_status_tool(order_id="12345")
+- ALWAYS prefer get_order_history_tool unless customer explicitly provides an order ID/number
 
 **When customer asks about products → call semantic_product_search_tool**
 Examples:
@@ -555,14 +654,19 @@ Examples:
 **CRITICAL RULES**:
 1. NEVER respond without calling a tool first for policy/order/product queries
 2. NEVER say "I'm here to help" without actually calling tools
-3. NEVER ask for customer ID - you already have it from the conversation context
-4. Support Arabic, Franco-Arabic, and English equally
-5. After getting tool results, provide a natural, empathetic response in the customer's language
+3. NEVER ask for customer ID - you already have it: {customer_id}
+4. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
+   - English input → English response
+   - Arabic input (عربي) → Arabic response (عربي)
+   - Franco-Arabic input (3ayez, 7aga, etc.) → Franco-Arabic response
+   - Detect Franco-Arabic by numbers in text: 3=ع, 7=ح, 2=أ, 5=خ, 8=ق, 9=ص
+5. After getting tool results, provide a natural, empathetic response in the customer's EXACT language
+6. For FAQs, ALWAYS call search_knowledge_base_tool first
 
 **Available Tools**:
-- search_knowledge_base_tool(query) - Search FAQs and policies
-- get_order_history_tool(customer_id) - Get all customer orders
-- check_order_status_tool(order_id) - Check specific order status
+- search_knowledge_base_tool(query) - Search FAQs and policies (USE FOR ALL POLICY QUESTIONS)
+- get_order_history_tool(customer_id) - Get all customer orders (for "Where is my order?")
+- check_order_status_tool(order_id) - Check specific order by ID (only when customer provides order number)
 - semantic_product_search_tool(query) - Search products with self-correction
 
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
@@ -580,56 +684,67 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
         # First attempt - ask nicely
         response = await support_agent.ainvoke(agent_messages)
 
-        # Check if tools were called - robust checking
-        tools_called = (
-            hasattr(response, 'tool_calls') and
-            response.tool_calls is not None and
-            isinstance(response.tool_calls, list) and
-            len(response.tool_calls) > 0
-        )
+        # Check if tools were called - robust checking using helper function
+        tool_calls_list = get_tool_calls(response)
+        tools_called = len(tool_calls_list) > 0
 
         logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
-        logger.info(f"[SUPPORT AGENT] Has tool_calls attr: {hasattr(response, 'tool_calls')}")
-        logger.info(f"[SUPPORT AGENT] tool_calls value: {getattr(response, 'tool_calls', 'N/A')}")
+        logger.info(f"[SUPPORT AGENT] Tool calls found: {len(tool_calls_list)}")
+        logger.info(f"[SUPPORT AGENT] Tool calls: {tool_calls_list[:100] if tool_calls_list else 'None'}")
         logger.info(f"[SUPPORT AGENT] Tools called on first attempt: {tools_called}")
 
         # If NO tools called, force a retry with stronger prompting
         if not tools_called:
             logger.warning("[SUPPORT AGENT] No tools called - forcing retry with stronger prompt")
 
-            # IMPORTANT: Only append response if it's pure text (no tool_calls)
-            # If it has tool_calls, we must NOT append it without executing them
-            if not (hasattr(response, 'tool_calls') and response.tool_calls):
-                agent_messages.append(response)
+            # CRITICAL: Do NOT append the first response to avoid OpenAI 400 errors
+            # The response without tool calls is useless anyway, and may have internal
+            # state that causes "tool_calls must be followed by tool messages" errors
 
-            # Add a strong forcing message
+            # Add a strong forcing message directly
             agent_messages.append(HumanMessage(
                 content="STOP. You MUST call a tool before responding. Call search_knowledge_base_tool, get_order_history_tool, check_order_status_tool, or semantic_product_search_tool now. Do NOT respond with text - call a tool first."
             ))
 
             # Retry
             response = await support_agent.ainvoke(agent_messages)
-            tools_called = (
-                hasattr(response, 'tool_calls') and
-                response.tool_calls is not None and
-                isinstance(response.tool_calls, list) and
-                len(response.tool_calls) > 0
-            )
+            tool_calls_list = get_tool_calls(response)
+            tools_called = len(tool_calls_list) > 0
             logger.info(f"[SUPPORT AGENT] Tools called on second attempt: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
-        if hasattr(response, 'tool_calls') and response.tool_calls and len(response.tool_calls) > 0:
+        if tools_called:
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
             agent_messages.append(response)
 
             # Execute each tool call
-            for tool_call in response.tool_calls:
-                tool_name = tool_call.get("name")
-                tool_args = tool_call.get("args", {})
-                tool_id = tool_call.get("id", str(len(tool_calls_info)))
+            for tool_call in tool_calls_list:
+                # Handle multiple formats: OpenAI function format, LangChain dict, or LangChain object
+                if isinstance(tool_call, dict):
+                    # OpenAI format: {'id': '...', 'function': {'name': '...', 'arguments': '...'}, 'type': 'function'}
+                    if 'function' in tool_call:
+                        tool_name = tool_call['function'].get('name')
+                        args_str = tool_call['function'].get('arguments', '{}')
+                        tool_args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                        tool_id = tool_call.get('id', str(len(tool_calls_info)))
+                    # LangChain format: {'name': '...', 'args': {...}, 'id': '...'}
+                    else:
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("args", {})
+                        tool_id = tool_call.get("id", str(len(tool_calls_info)))
+                else:
+                    # Object format (has attributes)
+                    tool_name = getattr(tool_call, "name", None)
+                    tool_args = getattr(tool_call, "args", {})
+                    tool_id = getattr(tool_call, "id", str(len(tool_calls_info)))
+
+                # Skip invalid tool calls
+                if not tool_name:
+                    logger.warning(f"[SUPPORT AGENT] Skipping tool call with no name: {tool_call}")
+                    continue
 
                 logger.info(f"[SUPPORT AGENT] Executing tool: {tool_name} with args: {tool_args}")
 
@@ -664,7 +779,7 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
             # Call agent again with tool results to get final response
             final_response = await support_agent.ainvoke(agent_messages)
-            response_text = final_response.content
+            response_text = final_response.content if final_response.content else "Based on the information I found, how can I assist you further?"
         else:
             # No tools called even after retry - fallback
             logger.error("[SUPPORT AGENT] NO TOOLS CALLED even after retry!")

@@ -4,6 +4,7 @@ Handles indexing of products and knowledge base documents.
 """
 import logging
 import hashlib
+import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy import select
@@ -104,9 +105,11 @@ class IngestionService:
             }
 
             # Upsert to vector database
+            # Use product ID directly if it's an integer, or convert to UUID
+            point_id = product.id if isinstance(product.id, int) else str(product.id)
             success = await self.vector_db.upsert_points(
                 collection_name=self.settings.qdrant_collection_products,
-                points=[(str(product.id), embedding, payload)]
+                points=[(point_id, embedding, payload)]
             )
 
             if success:
@@ -217,8 +220,10 @@ class IngestionService:
                 if metadata:
                     payload.update(metadata)
 
-                # Generate unique ID for chunk
-                chunk_id = f"{doc_id}_chunk_{i}"
+                # Generate unique UUID for chunk (Qdrant requires UUID or integer)
+                # Use deterministic UUID based on doc_id and chunk index for consistency
+                namespace_uuid = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # Namespace for doc chunks
+                chunk_id = str(uuid.uuid5(namespace_uuid, f"{doc_id}_chunk_{i}"))
                 points.append((chunk_id, embedding, payload))
 
             # Upsert all chunks
