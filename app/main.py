@@ -22,6 +22,14 @@ from app.services import (
 )
 from app.api.v1.router import api_router
 
+# Import agent v2 router from root-level routes
+# (Agent v2 is mounted separately with /api/v2 prefix, not under /api/v1)
+import sys
+from pathlib import Path
+# Add root directory to path to import from routes module
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from routes.agent import router as agent_v2_router
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -122,6 +130,9 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Include API v1 router
 app.include_router(api_router, prefix="/api/v1")
+
+# Include Agent v2 router (mounted at root level with its own /api/v2 prefix)
+app.include_router(agent_v2_router)
 
 
 if __name__ == "__main__":

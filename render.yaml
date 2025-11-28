@@ -6,7 +6,7 @@ services:
     name: ecommerce-dm-service
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -16,7 +16,7 @@ services:
         value: false
       - key: RATE_LIMIT_PER_MINUTE
         value: 100
-    healthCheckPath: /health
+    healthCheckPath: /api/v1/health
     plan: free
     region: frankfurt  # Choose: oregon, frankfurt, ohio, singapore
     autoDeploy: true

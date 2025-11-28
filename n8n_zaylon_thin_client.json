@@ -62,7 +62,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.API_URL }}/n8n/prepare-context-enhanced",
+        "url": "={{ $env.API_URL }}/api/v1/n8n/prepare-context-enhanced",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -239,7 +239,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.API_URL }}/n8n/store-interaction",
+        "url": "={{ $env.API_URL }}/api/v1/n8n/store-interaction",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,

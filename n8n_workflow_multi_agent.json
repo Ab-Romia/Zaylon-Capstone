@@ -178,7 +178,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.API_URL }}/n8n/prepare-context",
+        "url": "={{ $env.API_URL }}/api/v1/n8n/prepare-context",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -210,7 +210,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.API_URL }}/products/search",
+        "url": "={{ $env.API_URL }}/api/v1/products/search",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -240,7 +240,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.API_URL }}/context/retrieve",
+        "url": "={{ $env.API_URL }}/api/v1/context/retrieve",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -276,7 +276,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.API_URL }}/context/store",
+        "url": "={{ $env.API_URL }}/api/v1/context/store",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -306,7 +306,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.API_URL }}/n8n/store-interaction",
+        "url": "={{ $env.API_URL }}/api/v1/n8n/store-interaction",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
