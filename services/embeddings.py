@@ -14,35 +14,77 @@ settings = get_settings()
 class EmbeddingService:
     """
     Unified embedding service supporting:
-    - OpenAI embeddings (text-embedding-3-small)
-    - Local Sentence Transformers (multilingual support)
+    - OpenAI embeddings (text-embedding-3-small, dimension: 1536)
+    - Google Gemini embeddings (text-embedding-004, dimension: 768)
+    - Local Sentence Transformers (multilingual support, dimension: 384)
     """
 
     def __init__(self):
         self.settings = settings
         self._openai_client = None
+        self._gemini_client = None
         self._local_model = None
-        self._use_local = self.settings.use_local_embeddings  # Don't modify settings
-        self._actual_dimension = None  # Detect actual dimension
+        self._use_local = self.settings.use_local_embeddings
+        self._provider = None  # Will be "openai", "gemini", or "local"
+        self._actual_dimension = None
 
-        if not self._use_local:
-            try:
-                from openai import AsyncOpenAI
-                if self.settings.openai_api_key:
-                    self._openai_client = AsyncOpenAI(api_key=self.settings.openai_api_key)
-                    logger.info("OpenAI embeddings initialized")
-                else:
-                    logger.warning("OpenAI API key not set, falling back to local embeddings")
-                    self._use_local = True
-            except ImportError:
-                logger.warning("OpenAI package not available, falling back to local embeddings")
-                self._use_local = True
-            except Exception as e:
-                logger.error(f"Failed to initialize OpenAI client: {e}, falling back to local embeddings")
-                self._use_local = True
-
-        if self._use_local or not self._openai_client:
+        # Determine which provider to use
+        if self._use_local:
+            self._provider = "local"
             self._init_local_model()
+        else:
+            # Try to initialize based on LLM provider preference
+            llm_provider = self.settings.llm_provider.lower()
+
+            if llm_provider == "gemini":
+                # Try Gemini first
+                if self._init_gemini():
+                    self._provider = "gemini"
+                elif self._init_openai():
+                    self._provider = "openai"
+                    logger.warning("Gemini embeddings unavailable, using OpenAI")
+                else:
+                    self._provider = "local"
+                    self._init_local_model()
+                    logger.warning("Cloud embeddings unavailable, using local model")
+            else:
+                # Try OpenAI first (default)
+                if self._init_openai():
+                    self._provider = "openai"
+                elif self._init_gemini():
+                    self._provider = "gemini"
+                    logger.warning("OpenAI embeddings unavailable, using Gemini")
+                else:
+                    self._provider = "local"
+                    self._init_local_model()
+                    logger.warning("Cloud embeddings unavailable, using local model")
+
+        logger.info(f"Embedding service initialized with provider: {self._provider}")
+
+    def _init_openai(self) -> bool:
+        """Initialize OpenAI client. Returns True if successful."""
+        try:
+            from openai import AsyncOpenAI
+            if self.settings.openai_api_key:
+                self._openai_client = AsyncOpenAI(api_key=self.settings.openai_api_key)
+                logger.info("OpenAI embeddings initialized")
+                return True
+        except Exception as e:
+            logger.debug(f"OpenAI initialization failed: {e}")
+        return False
+
+    def _init_gemini(self) -> bool:
+        """Initialize Gemini client. Returns True if successful."""
+        try:
+            import google.generativeai as genai
+            if self.settings.gemini_api_key:
+                genai.configure(api_key=self.settings.gemini_api_key)
+                self._gemini_client = genai
+                logger.info("Gemini embeddings initialized")
+                return True
+        except Exception as e:
+            logger.debug(f"Gemini initialization failed: {e}")
+        return False
 
     def _init_local_model(self):
         """Initialize local Sentence Transformer model."""
@@ -71,10 +113,12 @@ class EmbeddingService:
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
 
-        if self._use_local or not self._openai_client:
-            return self._embed_local(text)
-        else:
+        if self._provider == "openai":
             return await self._embed_openai(text)
+        elif self._provider == "gemini":
+            return await self._embed_gemini(text)
+        else:  # local
+            return self._embed_local(text)
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """
@@ -94,10 +138,12 @@ class EmbeddingService:
         if not valid_texts:
             return []
 
-        if self._use_local or not self._openai_client:
-            return self._embed_local_batch(valid_texts)
-        else:
+        if self._provider == "openai":
             return await self._embed_openai_batch(valid_texts)
+        elif self._provider == "gemini":
+            return await self._embed_gemini_batch(valid_texts)
+        else:  # local
+            return self._embed_local_batch(valid_texts)
 
     async def _embed_openai(self, text: str) -> List[float]:
         """Generate embedding using OpenAI API."""
@@ -133,6 +179,46 @@ class EmbeddingService:
                 self._init_local_model()
             return self._embed_local_batch(texts)
 
+    async def _embed_gemini(self, text: str) -> List[float]:
+        """Generate embedding using Gemini API."""
+        try:
+            result = self._gemini_client.embed_content(
+                model=self.settings.gemini_embedding_model,
+                content=text,
+                task_type="retrieval_document"
+            )
+            embedding = result['embedding']
+            logger.debug(f"Generated Gemini embedding, dimension: {len(embedding)}")
+            return embedding
+        except Exception as e:
+            logger.error(f"Gemini embedding failed: {e}, falling back to local model")
+            # Fallback to local model
+            if not self._local_model:
+                self._init_local_model()
+            return self._embed_local(text)
+
+    async def _embed_gemini_batch(self, texts: List[str]) -> List[List[float]]:
+        """Generate embeddings for batch using Gemini API."""
+        try:
+            # Gemini doesn't have native batch API, so we'll call individually
+            # This is less efficient but works
+            embeddings = []
+            for text in texts:
+                result = self._gemini_client.embed_content(
+                    model=self.settings.gemini_embedding_model,
+                    content=text,
+                    task_type="retrieval_document"
+                )
+                embeddings.append(result['embedding'])
+            logger.debug(f"Generated {len(embeddings)} Gemini embeddings")
+            return embeddings
+        except Exception as e:
+            logger.error(f"Gemini batch embedding failed: {e}, falling back to local model")
+            # Fallback to local model
+            if not self._local_model:
+                self._init_local_model()
+            return self._embed_local_batch(texts)
+
     def _embed_local(self, text: str) -> List[float]:
         """Generate embedding using local Sentence Transformer."""
         try:
@@ -157,8 +243,12 @@ class EmbeddingService:
         if self._actual_dimension is not None:
             return self._actual_dimension
 
-        # Otherwise use defaults based on configuration
-        if self._use_local or not self._openai_client:
+        # Return based on provider
+        if self._provider == "openai":
+            return 1536  # OpenAI text-embedding-3-small
+        elif self._provider == "gemini":
+            return 768  # Gemini text-embedding-004
+        else:  # local
             # Local model dimension (384 for MiniLM, but detect if possible)
             if self._local_model is not None:
                 try:
@@ -168,9 +258,6 @@ class EmbeddingService:
                 except Exception:
                     pass
             return 384  # Fallback default
-        else:
-            # OpenAI text-embedding-3-small dimension
-            return 1536
 
     async def similarity(self, embedding1: List[float], embedding2: List[float]) -> float:
         """

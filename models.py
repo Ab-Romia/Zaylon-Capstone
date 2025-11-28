@@ -402,3 +402,52 @@ class PrepareContextEnhancedResponse(BaseModel):
     customer_metadata: EnhancedCustomerMetadata
     customer_order_history: str
     rag_enabled: bool = False
+
+
+# ============================================================================
+# Agentic System Models (Flowinit v2 API)
+# ============================================================================
+
+class AgentInvokeRequest(BaseModel):
+    """Request model for agent invocation."""
+    customer_id: str = Field(..., min_length=1, description="Customer identifier (e.g., 'instagram:@username')")
+    message: str = Field(..., min_length=1, max_length=5000, description="User's message")
+    channel: str = Field(..., pattern="^(instagram|whatsapp)$", description="Communication channel")
+    thread_id: Optional[str] = Field(default=None, description="Optional thread ID for conversation persistence")
+
+
+class AgentThought(BaseModel):
+    """Individual reasoning step in the agent's chain of thought."""
+    node: str = Field(..., description="Node name (e.g., 'supervisor', 'sales_agent')")
+    reasoning: str = Field(..., description="Agent's reasoning at this step")
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+class AgentToolCall(BaseModel):
+    """Record of a tool invocation by an agent."""
+    tool_name: str
+    arguments: Dict[str, Any]
+    result: Optional[str] = None
+    success: bool = True
+
+
+class AgentInvokeResponse(BaseModel):
+    """Response model for agent invocation."""
+    success: bool
+    response: str = Field(..., description="Final response from the agent")
+    agent_used: str = Field(..., description="Which agent handled the request (sales/support)")
+    chain_of_thought: List[AgentThought] = Field(default_factory=list, description="Full reasoning chain")
+    tool_calls: List[AgentToolCall] = Field(default_factory=list, description="Tools invoked during execution")
+    user_profile: Dict[str, Any] = Field(default_factory=dict, description="Customer facts from Memory Bank")
+    execution_time_ms: int = Field(..., ge=0, description="Total execution time")
+    thread_id: str = Field(..., description="Thread ID for conversation continuity")
+    error: Optional[str] = None
+
+
+class AgentStreamChunk(BaseModel):
+    """Streaming response chunk for agent invocation."""
+    type: str = Field(..., description="Chunk type: 'thought', 'tool_call', 'response', 'final'")
+    content: Optional[str] = None
+    node: Optional[str] = None
+    tool_name: Optional[str] = None
+    done: bool = False

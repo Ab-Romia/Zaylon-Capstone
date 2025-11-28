@@ -1,0 +1,808 @@
+"""
+LangGraph Agent Nodes
+Implements the individual nodes (functions) that make up the Flowinit agent graph.
+"""
+
+import json
+import logging
+from typing import Dict, Any, List
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+from app.agents.state import FlowinitState, AgentType, update_state
+from app.tools import (
+    SALES_TOOLS, SUPPORT_TOOLS, MEMORY_TOOLS,
+    get_customer_facts_tool, save_customer_fact_tool
+)
+from config import get_settings
+from services.llm_factory import get_chat_llm, get_provider_name
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+# Initialize LLM for agents using provider factory (supports OpenAI and Gemini)
+# The provider is configured in .env via LLM_PROVIDER
+try:
+    llm_base = get_chat_llm(use_mini=False)  # Main agent model (gpt-4o or gemini-1.5-pro)
+    supervisor_llm = get_chat_llm(use_mini=True)  # Routing model (gpt-4o-mini or gemini-1.5-flash)
+    logger.info(f"Initialized LLM provider: {get_provider_name()}")
+except Exception as e:
+    logger.error(f"Failed to initialize LLM provider: {e}")
+    raise
+
+
+def get_tool_calls(response):
+    """
+    Robust extraction of tool calls from AIMessage.
+    Handles different LangChain versions and response formats.
+
+    Returns:
+        List of tool calls, or empty list if none found
+    """
+    # Debug: log response structure
+    logger.debug(f"[TOOL_CALL_DETECTION] Response type: {type(response)}")
+    logger.debug(f"[TOOL_CALL_DETECTION] Response dir: {[a for a in dir(response) if not a.startswith('_')]}")
+
+    # Try direct attribute access (newer LangChain)
+    if hasattr(response, 'tool_calls'):
+        logger.debug(f"[TOOL_CALL_DETECTION] Has tool_calls attr, value: {response.tool_calls}")
+        if response.tool_calls:
+            return response.tool_calls
+
+    # Try additional_kwargs (some versions store it here)
+    if hasattr(response, 'additional_kwargs'):
+        logger.debug(f"[TOOL_CALL_DETECTION] additional_kwargs: {response.additional_kwargs}")
+        tool_calls = response.additional_kwargs.get('tool_calls', [])
+        if tool_calls:
+            logger.debug(f"[TOOL_CALL_DETECTION] Found tool_calls in additional_kwargs: {tool_calls}")
+            return tool_calls
+
+        # Try function_call (older OpenAI format)
+        function_call = response.additional_kwargs.get('function_call')
+        if function_call:
+            logger.debug(f"[TOOL_CALL_DETECTION] Found function_call in additional_kwargs: {function_call}")
+            # Convert old format to new format
+            return [{
+                'name': function_call.get('name'),
+                'args': json.loads(function_call.get('arguments', '{}')),
+                'id': 'legacy_call'
+            }]
+
+    logger.debug("[TOOL_CALL_DETECTION] No tool calls found")
+    return []
+
+
+# ============================================================================
+# Memory Nodes
+# ============================================================================
+
+async def load_memory_node(state: FlowinitState) -> Dict[str, Any]:
+    """
+    Load customer long-term memory from Memory Bank.
+
+    This node:
+    1. Retrieves customer facts using get_customer_facts_tool
+    2. Populates user_profile in state
+    3. Logs the memory load for observability
+    """
+    logger.info(f"[LOAD_MEMORY] Loading memory for customer: {state['customer_id']}")
+
+    customer_id = state["customer_id"]
+
+    try:
+        # Call memory tool to retrieve facts
+        facts_json = await get_customer_facts_tool.ainvoke({"customer_id": customer_id})
+        facts_data = json.loads(facts_json)
+
+        # Build user profile dictionary
+        user_profile = {}
+        if facts_data.get("success") and facts_data.get("found"):
+            for fact in facts_data.get("facts", []):
+                user_profile[fact["fact_key"]] = {
+                    "value": fact["fact_value"],
+                    "confidence": fact["confidence"],
+                    "source": fact["source"]
+                }
+
+            logger.info(f"[LOAD_MEMORY] Loaded {len(user_profile)} facts")
+        else:
+            logger.info("[LOAD_MEMORY] No previous facts found for customer")
+
+        # Add to chain of thought
+        thought = f"Loaded customer memory: {len(user_profile)} facts retrieved"
+
+        return {
+            "user_profile": user_profile,
+            "chain_of_thought": [thought]
+            # Don't set current_agent - preserve value from previous nodes
+        }
+
+    except Exception as e:
+        logger.error(f"[LOAD_MEMORY] Error loading memory: {e}")
+        return {
+            "user_profile": {},
+            "chain_of_thought": [f"Memory load failed: {str(e)}"]
+            # Don't set current_agent - preserve value from previous nodes
+        }
+
+
+async def save_memory_node(state: FlowinitState) -> Dict[str, Any]:
+    """
+    Extract and save new facts from conversation to Memory Bank.
+
+    This node:
+    1. Analyzes the last conversation turn
+    2. Extracts any new facts (preferences, constraints, personal info)
+    3. Saves them using save_customer_fact_tool
+    4. Logs extractions for observability
+    """
+    logger.info(f"[SAVE_MEMORY] Extracting facts for customer: {state['customer_id']}")
+
+    customer_id = state["customer_id"]
+    messages = state["messages"]
+
+    # Get the last user message
+    last_user_message = None
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_user_message = msg.content
+            break
+
+    if not last_user_message:
+        logger.info("[SAVE_MEMORY] No user message to extract facts from")
+        return {
+            "chain_of_thought": ["No facts extracted - no user message found"],
+            "current_agent": "memory"
+        }
+
+    try:
+        # Use LLM to extract facts
+        extraction_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a fact extraction system. Analyze the user's message and extract any facts about them.
+
+Extract facts in these categories:
+1. **preference**: Things they like/prefer (size, color, style, etc.)
+2. **constraint**: Limitations or requirements (budget, location, delivery time)
+3. **personal_info**: Personal details (name, address, phone updates)
+
+For each fact, determine:
+- fact_type: preference, constraint, or personal_info
+- fact_key: Short identifier (e.g., "preferred_size", "budget_max", "delivery_address")
+- fact_value: The actual value
+- confidence: 100 if explicitly stated, 70-90 if inferred
+- source: "explicit" if directly stated, "inferred" if you deduced it
+
+Return JSON array of facts. If no facts, return empty array.
+
+Examples:
+- "I wear size M" → {{"fact_type": "preference", "fact_key": "preferred_size", "fact_value": "M", "confidence": 100, "source": "explicit"}}
+- "I love blue" → {{"fact_type": "preference", "fact_key": "favorite_color", "fact_value": "blue", "confidence": 100, "source": "explicit"}}
+- "I moved to Cairo" → {{"fact_type": "personal_info", "fact_key": "city", "fact_value": "Cairo", "confidence": 100, "source": "explicit"}}
+
+Return ONLY valid JSON array, no other text."""),
+            ("human", "{message}")
+        ])
+
+        extraction_chain = extraction_prompt | llm_base
+        response = await extraction_chain.ainvoke({"message": last_user_message})
+
+        # Parse extracted facts
+        try:
+            extracted_text = response.content.strip()
+            # Remove markdown code blocks if present
+            if extracted_text.startswith("```"):
+                extracted_text = extracted_text.split("```")[1]
+                if extracted_text.startswith("json"):
+                    extracted_text = extracted_text[4:]
+                extracted_text = extracted_text.strip()
+
+            facts = json.loads(extracted_text)
+
+            if not isinstance(facts, list):
+                facts = []
+
+            # Save each fact
+            saved_count = 0
+            for fact in facts:
+                try:
+                    result_json = await save_customer_fact_tool.ainvoke({
+                        "customer_id": customer_id,
+                        "fact_type": fact.get("fact_type", "preference"),
+                        "fact_key": fact.get("fact_key"),
+                        "fact_value": fact.get("fact_value"),
+                        "confidence": fact.get("confidence", 100),
+                        "source": fact.get("source", "explicit")
+                    })
+                    result = json.loads(result_json)
+                    if result.get("success"):
+                        saved_count += 1
+                        logger.info(f"[SAVE_MEMORY] Saved fact: {fact['fact_key']} = {fact['fact_value']}")
+                except Exception as e:
+                    logger.error(f"[SAVE_MEMORY] Failed to save fact: {e}")
+
+            thought = f"Extracted and saved {saved_count} new facts from conversation"
+            logger.info(f"[SAVE_MEMORY] {thought}")
+
+            return {
+                "chain_of_thought": [thought]
+                # Don't set current_agent - preserve the agent that handled the request
+            }
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[SAVE_MEMORY] Failed to parse extracted facts: {e}")
+            return {
+                "chain_of_thought": ["Fact extraction parsing failed"]
+                # Don't set current_agent - preserve the agent that handled the request
+            }
+
+    except Exception as e:
+        logger.error(f"[SAVE_MEMORY] Error extracting facts: {e}")
+        return {
+            "chain_of_thought": [f"Fact extraction failed: {str(e)}"]
+            # Don't set current_agent - preserve the agent that handled the request
+        }
+
+
+# ============================================================================
+# Supervisor Node (Router)
+# ============================================================================
+
+async def supervisor_node(state: FlowinitState) -> Dict[str, Any]:
+    """
+    Supervisor agent that routes to Sales or Support.
+
+    This node:
+    1. Analyzes the conversation and user profile
+    2. Decides which specialist agent should handle the request
+    3. Sets the 'next' field to route accordingly
+    4. Logs reasoning for observability
+    """
+    logger.info("[SUPERVISOR] Analyzing request and routing...")
+
+    messages = state["messages"]
+    user_profile = state.get("user_profile", {})
+
+    # Build user profile summary for context
+    profile_summary = "No previous history."
+    if user_profile:
+        profile_items = []
+        for key, data in user_profile.items():
+            profile_items.append(f"- {key}: {data['value']}")
+        profile_summary = "User profile:\n" + "\n".join(profile_items)
+
+    # Get last user message
+    last_message = None
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_message = msg.content
+            break
+
+    if not last_message:
+        logger.warning("[SUPERVISOR] No user message found, defaulting to Support")
+        return {
+            "next": "support",
+            "chain_of_thought": ["No message found - defaulting to Support"],
+            "current_agent": AgentType.SUPERVISOR
+        }
+
+    # Supervisor routing prompt
+    routing_prompt = f"""You are a routing supervisor for an e-commerce chatbot. Your job is to analyze the customer's message and decide which specialist should handle it.
+
+**Customer Message**: "{last_message}"
+
+**Customer Profile**:
+{profile_summary}
+
+**Available Agents**:
+1. **Sales Agent**: Handles product searches, purchases, ordering, product availability, order history, AND can assist with product-related returns
+2. **Support Agent**: Handles ONLY FAQs, policies, general inquiries (NOT specific to customer's orders/purchases)
+
+**CRITICAL ROUTING RULES** (Follow Strictly - Prefer SALES for mixed or unclear queries):
+
+**Route to SALES if asking about:**
+- Product searches ("Show me hoodies", "عايز بنطلون", "I want a shirt", "blue shirt")
+- Product availability ("Do you have this in stock?", "What sizes?", "What colors?")
+- Prices ("How much is?", "Show me cheap products", "price of hoodie")
+- Making purchases ("I want to buy", "3ayz a3ml order", "I want to purchase")
+- Product recommendations ("Best sellers", "For winter", "comfortable clothes")
+- Saving preferences ("I prefer red", "I like size M")
+- Mixed queries combining products + policies ("Tell me about shipping times, and also I want a black jacket")
+- Mixed queries combining returns + purchases ("I want to return my last order and buy a blue shirt")
+- Anything product-specific or purchase-related
+
+**Route to SUPPORT ONLY if asking about:**
+- General policies WITHOUT product interest ("What's your return policy?", "What payment methods?")
+- Shipping information WITHOUT ordering ("Do you ship to Cairo?", "How long is shipping?")
+- Order tracking ("Where is my order?", "Order status?", "فين طلبي؟")
+- Order modifications ("Can I change my order?", "Cancel my order")
+- Complaints ("Damaged item", "Wrong product")
+- General FAQs that don't involve products ("How to cancel?")
+
+**Mixed Intent - DEFAULT TO SALES**:
+- If BOTH products AND policy questions → Route to **SALES** (Sales can search KB if needed)
+- If BOTH returns AND purchases → Route to **SALES**
+- If unclear or ambiguous → Route to **SALES** (better equipped)
+- ONLY route to Support if it's purely FAQ/policy with NO product interest
+
+**Your Decision**:
+Respond with ONLY one word: "sales" or "support"
+"""
+
+    try:
+        # Get routing decision from LLM
+        response = await supervisor_llm.ainvoke([
+            SystemMessage(content="You are a routing supervisor. Respond with only 'sales' or 'support'."),
+            HumanMessage(content=routing_prompt)
+        ])
+
+        decision = response.content.strip().lower()
+
+        # Validate decision
+        if decision not in ["sales", "support"]:
+            logger.warning(f"[SUPERVISOR] Invalid decision '{decision}', defaulting to support")
+            decision = "support"
+
+        thought = f"Routing decision: {decision.upper()} (reason: {last_message[:50]}...)"
+        logger.info(f"[SUPERVISOR] {thought}")
+
+        return {
+            "next": decision,
+            "chain_of_thought": [thought],
+            "current_agent": AgentType.SUPERVISOR
+        }
+
+    except Exception as e:
+        logger.error(f"[SUPERVISOR] Error during routing: {e}")
+        return {
+            "next": "support",  # Safe default
+            "chain_of_thought": [f"Routing failed: {str(e)} - defaulting to Support"],
+            "current_agent": AgentType.SUPERVISOR
+        }
+
+
+# ============================================================================
+# Specialist Agent Nodes
+# ============================================================================
+
+async def sales_agent_node(state: FlowinitState) -> Dict[str, Any]:
+    """
+    Sales specialist agent with product and order tools.
+
+    This node:
+    1. Acts as a sales representative
+    2. Has access to product search, availability, and order creation tools
+    3. Uses user profile to personalize responses
+    4. Generates final customer-facing response
+    """
+    logger.info("[SALES AGENT] Handling sales request...")
+
+    messages = state["messages"]
+    user_profile = state.get("user_profile", {})
+    customer_id = state.get("customer_id", "unknown")
+
+    # Build system message with profile context
+    profile_context = ""
+    if user_profile:
+        profile_items = []
+        for key, data in user_profile.items():
+            profile_items.append(f"- {key}: {data['value']}")
+        profile_context = "\n**Customer Preferences**:\n" + "\n".join(profile_items)
+
+    system_message = f"""You are a sales specialist for an e-commerce clothing store. You MUST use tools to help customers.
+
+**Customer Context**:
+- Customer ID: {customer_id}
+
+{profile_context}
+
+**MANDATORY TOOL USAGE RULES**:
+You have NO product information in your memory. You MUST call tools for ANY product-related query.
+
+**PERSONALIZATION - PROACTIVE MEMORY USAGE**:
+- ALWAYS consider the customer's profile above when making recommendations
+- If customer asks "in my size" or "my favorite color" → Their preferences are ALREADY shown in the profile above, use them directly
+- If no preferences shown but customer refers to "my size/color" → Ask them to specify
+- Use preferences to enhance search queries (e.g., if they prefer red, prioritize red items)
+- If customer states a NEW preference ("I prefer red", "I like size M") → call save_customer_fact_tool FIRST
+
+**When customer asks about products/prices/stock → IMMEDIATELY call search_products_tool**
+Examples:
+- "I want a red hoodie" → call search_products_tool(query="red hoodie")
+- "عايز بنطلون اسود" → call search_products_tool(query="بنطلون اسود")
+- "3ayez jeans azra2" → call search_products_tool(query="jeans azra2")
+- "Show me hoodies" → call search_products_tool(query="hoodies")
+- "What's the price of the red hoodie?" → call search_products_tool(query="red hoodie")
+- "Do you have that hoodie in my size?" → Check customer profile above for preferred_size, then search with that size
+
+**When customer states preferences → call save_customer_fact_tool**
+Examples:
+- "I prefer red colors and size M" → call save_customer_fact_tool twice (once for color, once for size)
+- "I like large sizes" → call save_customer_fact_tool(fact_key="preferred_size", fact_value="L", ...)
+
+**When customer asks about policies/FAQs in addition to products → call search_knowledge_base_tool**
+Examples:
+- "Tell me about shipping times, and also I want a black jacket" → call search_knowledge_base_tool(query="shipping times") AND search_products_tool(query="black jacket")
+- "What's your return policy and show me blue shirts" → call both tools
+
+**When customer wants to buy/order → call create_order_tool**
+Examples:
+- "I want to buy size L" → call create_order_tool(...)
+- "3ayz a3ml order" → call create_order_tool(...)
+
+**When customer asks about order status/history → call get_order_history_tool or check_order_status_tool**
+Examples:
+- "Where is my order?" → call get_order_history_tool(customer_id="{customer_id}")
+- "Order status?" → call get_order_history_tool(customer_id="{customer_id}")
+- "I want to reorder my last purchase" → call get_order_history_tool(customer_id="{customer_id}") first
+
+**CRITICAL RULES**:
+1. NEVER respond without calling a tool first for product/order queries
+2. NEVER say "I'm processing your request" - call the tool immediately
+3. NEVER make up product information - use tools only
+4. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
+   - English input → English response
+   - Arabic input (عربي) → Arabic response (عربي)
+   - Franco-Arabic input (3ayez, 7aga, etc.) → Franco-Arabic response
+   - Detect Franco-Arabic by numbers in text: 3=ع, 7=ح, 2=أ, 5=خ, 8=ق, 9=ص
+5. After getting tool results, provide a natural, helpful response in the customer's EXACT language
+6. ALWAYS use customer preferences from profile when available
+
+**Available Tools**:
+- search_products_tool(query, limit=5) - Search products by keyword
+- check_product_availability_tool(product_name, size, color) - Check stock
+- create_order_tool(customer_id, product_id, quantity, size, color, name, phone, address) - Create order
+- get_order_history_tool(customer_id) - Get customer's past orders
+- check_order_status_tool(order_id) - Check specific order status
+- save_customer_fact_tool(customer_id, fact_type, fact_key, fact_value, confidence, source) - Save customer preferences
+
+Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
+
+    try:
+        # Create agent with tools - simple binding without forcing
+        sales_agent = llm_base.bind_tools(SALES_TOOLS)
+
+        # Build agent messages
+        agent_messages = [SystemMessage(content=system_message)] + messages
+
+        logger.info(f"[SALES AGENT] Invoking with {len(agent_messages)} messages")
+        logger.info(f"[SALES AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
+
+        # First attempt - ask nicely
+        response = await sales_agent.ainvoke(agent_messages)
+
+        # Check if tools were called - robust checking using helper function
+        tool_calls_list = get_tool_calls(response)
+        tools_called = len(tool_calls_list) > 0
+
+        logger.info(f"[SALES AGENT] Response type: {type(response)}")
+        logger.info(f"[SALES AGENT] Tool calls found: {len(tool_calls_list)}")
+        logger.info(f"[SALES AGENT] Tool calls: {tool_calls_list[:100] if tool_calls_list else 'None'}")
+        logger.info(f"[SALES AGENT] Tools called on first attempt: {tools_called}")
+
+        # If NO tools called, force a retry with stronger prompting
+        if not tools_called:
+            logger.warning("[SALES AGENT] No tools called - forcing retry with stronger prompt")
+
+            # CRITICAL: Do NOT append the first response to avoid OpenAI 400 errors
+            # The response without tool calls is useless anyway, and may have internal
+            # state that causes "tool_calls must be followed by tool messages" errors
+
+            # Add a strong forcing message directly
+            agent_messages.append(HumanMessage(
+                content="STOP. You MUST call a tool before responding. Call search_products_tool, check_product_availability_tool, create_order_tool, get_order_history_tool, or check_order_status_tool now. Do NOT respond with text - call a tool first."
+            ))
+
+            # Retry
+            response = await sales_agent.ainvoke(agent_messages)
+            tool_calls_list = get_tool_calls(response)
+            tools_called = len(tool_calls_list) > 0
+            logger.info(f"[SALES AGENT] Tools called on second attempt: {tools_called}")
+
+        # Execute tools if requested
+        tool_calls_info = []
+        if tools_called:
+            from langchain_core.messages import ToolMessage
+
+            # First, add the assistant's message with tool calls to maintain conversation order
+            agent_messages.append(response)
+
+            # Execute each tool call
+            for tool_call in tool_calls_list:
+                # Handle multiple formats: OpenAI function format, LangChain dict, or LangChain object
+                if isinstance(tool_call, dict):
+                    # OpenAI format: {'id': '...', 'function': {'name': '...', 'arguments': '...'}, 'type': 'function'}
+                    if 'function' in tool_call:
+                        tool_name = tool_call['function'].get('name')
+                        args_str = tool_call['function'].get('arguments', '{}')
+                        tool_args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                        tool_id = tool_call.get('id', str(len(tool_calls_info)))
+                    # LangChain format: {'name': '...', 'args': {...}, 'id': '...'}
+                    else:
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("args", {})
+                        tool_id = tool_call.get("id", str(len(tool_calls_info)))
+                else:
+                    # Object format (has attributes)
+                    tool_name = getattr(tool_call, "name", None)
+                    tool_args = getattr(tool_call, "args", {})
+                    tool_id = getattr(tool_call, "id", str(len(tool_calls_info)))
+
+                # Skip invalid tool calls
+                if not tool_name:
+                    logger.warning(f"[SALES AGENT] Skipping tool call with no name: {tool_call}")
+                    continue
+
+                logger.info(f"[SALES AGENT] Executing tool: {tool_name} with args: {tool_args}")
+
+                # Find and execute the tool
+                tool_result = None
+                for tool in SALES_TOOLS:
+                    if tool.name == tool_name:
+                        try:
+                            tool_result = await tool.ainvoke(tool_args)
+                            logger.info(f"[SALES AGENT] Tool {tool_name} succeeded: {str(tool_result)[:100]}")
+                        except Exception as e:
+                            tool_result = f"Tool execution failed: {str(e)}"
+                            logger.error(f"[SALES AGENT] Tool {tool_name} failed: {e}", exc_info=True)
+                        break
+
+                if tool_result is None:
+                    tool_result = f"Tool {tool_name} not found"
+                    logger.error(f"[SALES AGENT] Tool {tool_name} not found in SALES_TOOLS")
+
+                tool_calls_info.append({
+                    "tool_name": tool_name,
+                    "arguments": tool_args,
+                    "result": str(tool_result)[:200],  # Truncate for logging
+                    "success": "failed" not in str(tool_result).lower()
+                })
+
+                # Add tool result to conversation (AFTER the AIMessage with tool_calls)
+                agent_messages.append(ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_id
+                ))
+
+            # Call agent again with tool results to get final response
+            final_response = await sales_agent.ainvoke(agent_messages)
+            response_text = final_response.content if final_response.content else "Based on the search results above, I'm ready to help you. Could you provide more details about what you're looking for?"
+        else:
+            # No tools called even after retry - fallback
+            logger.error("[SALES AGENT] NO TOOLS CALLED even after retry!")
+            response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our product database. Please try again."
+
+        thought = f"Sales agent processed request (used {len(tool_calls_info)} tools)"
+
+        return {
+            "messages": [response],
+            "final_response": response_text,
+            "chain_of_thought": [thought],
+            "tool_calls": tool_calls_info,
+            "current_agent": AgentType.SALES,
+            "next": "end"
+        }
+
+    except Exception as e:
+        logger.error(f"[SALES AGENT] Error: {e}")
+        error_response = AIMessage(content="I'm sorry, I encountered an error processing your request. Please try again or contact support.")
+        return {
+            "messages": [error_response],
+            "final_response": error_response.content,
+            "chain_of_thought": [f"Sales agent error: {str(e)}"],
+            "current_agent": AgentType.SALES,
+            "next": "end"
+        }
+
+
+async def support_agent_node(state: FlowinitState) -> Dict[str, Any]:
+    """
+    Support specialist agent with knowledge base and order tracking tools.
+
+    This node:
+    1. Acts as customer support
+    2. Has access to knowledge base search and order history tools
+    3. Handles FAQs, policies, and general inquiries
+    4. Uses RAG tool with self-correction for better answers
+    """
+    logger.info("[SUPPORT AGENT] Handling support request...")
+
+    messages = state["messages"]
+    user_profile = state.get("user_profile", {})
+    customer_id = state.get("customer_id", "unknown")
+
+    # Build system message
+    profile_context = ""
+    if user_profile:
+        profile_items = []
+        for key, data in user_profile.items():
+            profile_items.append(f"- {key}: {data['value']}")
+        profile_context = "\n**Customer Profile**:\n" + "\n".join(profile_items)
+
+    system_message = f"""You are a support specialist for an e-commerce clothing store. You MUST use tools to help customers.
+
+**Customer Context**:
+- Customer ID: {customer_id} (use this when calling order tools)
+
+{profile_context}
+
+**MANDATORY TOOL USAGE RULES**:
+You have NO policy information or order data in your memory. You MUST call tools for ANY support query.
+
+**When customer asks about policies/returns/shipping/payment → IMMEDIATELY call search_knowledge_base_tool**
+Examples:
+- "What are your return policies?" → call search_knowledge_base_tool(query="return policy")
+- "How long does shipping take?" → call search_knowledge_base_tool(query="shipping time")
+- "Do you ship to Cairo?" → call search_knowledge_base_tool(query="shipping locations")
+- "What payment methods do you accept?" → call search_knowledge_base_tool(query="payment methods")
+- "Can I get a refund?" → call search_knowledge_base_tool(query="refund policy")
+- "How do I cancel my order?" → call search_knowledge_base_tool(query="order cancellation")
+- "I received a damaged item" → call search_knowledge_base_tool(query="damaged item policy")
+
+**IMPORTANT - Order Tracking Tool Selection**:
+- "Where is my order?" / "فين طلبي؟" / "Order status?" WITHOUT order number → call get_order_history_tool(customer_id="{customer_id}") to see ALL orders, then identify the most recent one
+- "Track order #12345" / "Order status #12345" WITH specific order number → call check_order_status_tool(order_id="12345") for SPECIFIC order
+- "Can I change my order?" WITHOUT order number → call get_order_history_tool first to find their orders
+- "Can I change order #12345?" WITH order number → call check_order_status_tool(order_id="12345")
+- ALWAYS prefer get_order_history_tool unless customer explicitly provides an order ID/number
+
+**When customer asks about products → call semantic_product_search_tool**
+Examples:
+- "Do you have blue shirts?" → call semantic_product_search_tool(query="blue shirts")
+- "Show me hoodies" → call semantic_product_search_tool(query="hoodies")
+
+**CRITICAL RULES**:
+1. NEVER respond without calling a tool first for policy/order/product queries
+2. NEVER say "I'm here to help" without actually calling tools
+3. NEVER ask for customer ID - you already have it: {customer_id}
+4. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
+   - English input → English response
+   - Arabic input (عربي) → Arabic response (عربي)
+   - Franco-Arabic input (3ayez, 7aga, etc.) → Franco-Arabic response
+   - Detect Franco-Arabic by numbers in text: 3=ع, 7=ح, 2=أ, 5=خ, 8=ق, 9=ص
+5. After getting tool results, provide a natural, empathetic response in the customer's EXACT language
+6. For FAQs, ALWAYS call search_knowledge_base_tool first
+
+**Available Tools**:
+- search_knowledge_base_tool(query) - Search FAQs and policies (USE FOR ALL POLICY QUESTIONS)
+- get_order_history_tool(customer_id) - Get all customer orders (for "Where is my order?")
+- check_order_status_tool(order_id) - Check specific order by ID (only when customer provides order number)
+- semantic_product_search_tool(query) - Search products with self-correction
+
+Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
+
+    try:
+        # Create agent with tools - simple binding without forcing
+        support_agent = llm_base.bind_tools(SUPPORT_TOOLS)
+
+        # Build agent messages
+        agent_messages = [SystemMessage(content=system_message)] + messages
+
+        logger.info(f"[SUPPORT AGENT] Invoking with {len(agent_messages)} messages")
+        logger.info(f"[SUPPORT AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
+
+        # First attempt - ask nicely
+        response = await support_agent.ainvoke(agent_messages)
+
+        # Check if tools were called - robust checking using helper function
+        tool_calls_list = get_tool_calls(response)
+        tools_called = len(tool_calls_list) > 0
+
+        logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
+        logger.info(f"[SUPPORT AGENT] Tool calls found: {len(tool_calls_list)}")
+        logger.info(f"[SUPPORT AGENT] Tool calls: {tool_calls_list[:100] if tool_calls_list else 'None'}")
+        logger.info(f"[SUPPORT AGENT] Tools called on first attempt: {tools_called}")
+
+        # If NO tools called, force a retry with stronger prompting
+        if not tools_called:
+            logger.warning("[SUPPORT AGENT] No tools called - forcing retry with stronger prompt")
+
+            # CRITICAL: Do NOT append the first response to avoid OpenAI 400 errors
+            # The response without tool calls is useless anyway, and may have internal
+            # state that causes "tool_calls must be followed by tool messages" errors
+
+            # Add a strong forcing message directly
+            agent_messages.append(HumanMessage(
+                content="STOP. You MUST call a tool before responding. Call search_knowledge_base_tool, get_order_history_tool, check_order_status_tool, or semantic_product_search_tool now. Do NOT respond with text - call a tool first."
+            ))
+
+            # Retry
+            response = await support_agent.ainvoke(agent_messages)
+            tool_calls_list = get_tool_calls(response)
+            tools_called = len(tool_calls_list) > 0
+            logger.info(f"[SUPPORT AGENT] Tools called on second attempt: {tools_called}")
+
+        # Execute tools if requested
+        tool_calls_info = []
+        if tools_called:
+            from langchain_core.messages import ToolMessage
+
+            # First, add the assistant's message with tool calls to maintain conversation order
+            agent_messages.append(response)
+
+            # Execute each tool call
+            for tool_call in tool_calls_list:
+                # Handle multiple formats: OpenAI function format, LangChain dict, or LangChain object
+                if isinstance(tool_call, dict):
+                    # OpenAI format: {'id': '...', 'function': {'name': '...', 'arguments': '...'}, 'type': 'function'}
+                    if 'function' in tool_call:
+                        tool_name = tool_call['function'].get('name')
+                        args_str = tool_call['function'].get('arguments', '{}')
+                        tool_args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                        tool_id = tool_call.get('id', str(len(tool_calls_info)))
+                    # LangChain format: {'name': '...', 'args': {...}, 'id': '...'}
+                    else:
+                        tool_name = tool_call.get("name")
+                        tool_args = tool_call.get("args", {})
+                        tool_id = tool_call.get("id", str(len(tool_calls_info)))
+                else:
+                    # Object format (has attributes)
+                    tool_name = getattr(tool_call, "name", None)
+                    tool_args = getattr(tool_call, "args", {})
+                    tool_id = getattr(tool_call, "id", str(len(tool_calls_info)))
+
+                # Skip invalid tool calls
+                if not tool_name:
+                    logger.warning(f"[SUPPORT AGENT] Skipping tool call with no name: {tool_call}")
+                    continue
+
+                logger.info(f"[SUPPORT AGENT] Executing tool: {tool_name} with args: {tool_args}")
+
+                # Find and execute the tool
+                tool_result = None
+                for tool in SUPPORT_TOOLS:
+                    if tool.name == tool_name:
+                        try:
+                            tool_result = await tool.ainvoke(tool_args)
+                            logger.info(f"[SUPPORT AGENT] Tool {tool_name} succeeded: {str(tool_result)[:100]}")
+                        except Exception as e:
+                            tool_result = f"Tool execution failed: {str(e)}"
+                            logger.error(f"[SUPPORT AGENT] Tool {tool_name} failed: {e}", exc_info=True)
+                        break
+
+                if tool_result is None:
+                    tool_result = f"Tool {tool_name} not found"
+                    logger.error(f"[SUPPORT AGENT] Tool {tool_name} not found in SUPPORT_TOOLS")
+
+                tool_calls_info.append({
+                    "tool_name": tool_name,
+                    "arguments": tool_args,
+                    "result": str(tool_result)[:200],  # Truncate for logging
+                    "success": "failed" not in str(tool_result).lower()
+                })
+
+                # Add tool result to conversation (AFTER the AIMessage with tool_calls)
+                agent_messages.append(ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_id
+                ))
+
+            # Call agent again with tool results to get final response
+            final_response = await support_agent.ainvoke(agent_messages)
+            response_text = final_response.content if final_response.content else "Based on the information I found, how can I assist you further?"
+        else:
+            # No tools called even after retry - fallback
+            logger.error("[SUPPORT AGENT] NO TOOLS CALLED even after retry!")
+            response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our support systems. Please try again or contact our support team directly."
+
+        thought = f"Support agent processed request (used {len(tool_calls_info)} tools)"
+
+        return {
+            "messages": [response],
+            "final_response": response_text,
+            "chain_of_thought": [thought],
+            "tool_calls": tool_calls_info,
+            "current_agent": AgentType.SUPPORT,
+            "next": "end"
+        }
+
+    except Exception as e:
+        logger.error(f"[SUPPORT AGENT] Error: {e}")
+        error_response = AIMessage(content="I apologize for the inconvenience. Let me connect you with a human agent for assistance.")
+        return {
+            "messages": [error_response],
+            "final_response": error_response.content,
+            "chain_of_thought": [f"Support agent error: {str(e)}"],
+            "current_agent": AgentType.SUPPORT,
+            "next": "end"
+        }

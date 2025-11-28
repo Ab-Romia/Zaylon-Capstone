@@ -3,26 +3,32 @@ Conversation context management service.
 Handles conversation history storage, retrieval, and cross-channel linking.
 OPTIMIZED: Added in-memory caching for frequent lookups.
 """
+import re
+import logging
+import time
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, or_, update, func
+
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import NoResultFound
+
 from database import Conversation, Customer
 from models import (
     MessageInfo, CustomerMetadata, RetrieveContextResponse,
     StoreContextResponse, LinkChannelsResponse
 )
 from services.products import detect_language
-import logging
-import uuid
-import time
+from core.constants import (
+    CONTEXT_CACHE_TTL, MAX_CACHE_SIZE, CACHE_EVICTION_BATCH,
+    MESSAGE_TRUNCATE_LENGTH, CONTEXT_HISTORY_DISPLAY_LIMIT,
+    PHONE_PATTERN, NAME_PATTERNS
+)
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache for context (TTL: 30 seconds)
+# Simple in-memory cache for context
 _context_cache: Dict[str, tuple] = {}  # {customer_id: (result, timestamp)}
-CONTEXT_CACHE_TTL = 30  # seconds
 
 
 def _get_cached_context(customer_id: str):
@@ -39,9 +45,9 @@ def _get_cached_context(customer_id: str):
 def _set_cached_context(customer_id: str, result):
     """Cache context result."""
     # Limit cache size
-    if len(_context_cache) > 1000:
+    if len(_context_cache) > MAX_CACHE_SIZE:
         # Remove oldest entries
-        oldest = sorted(_context_cache.items(), key=lambda x: x[1][1])[:100]
+        oldest = sorted(_context_cache.items(), key=lambda x: x[1][1])[:CACHE_EVICTION_BATCH]
         for k, _ in oldest:
             del _context_cache[k]
     _context_cache[customer_id] = (result, time.time())
@@ -111,7 +117,7 @@ async def ensure_customer_exists(db: AsyncSession, customer_id: str) -> None:
             metadata={}
         )
         db.add(customer)
-        await db.commit()
+        # Note: Commit is handled by the calling function
         logger.info(f"Created new customer profile: {customer_id}")
 
 
@@ -268,11 +274,8 @@ def build_customer_metadata(
 
 def extract_phone_from_conversations(conversations: List[Conversation]) -> Optional[str]:
     """Extract phone number from conversation history."""
-    import re
-    phone_pattern = r'(?:\+?20|0)?1[0125]\d{8}'
-
     for conv in reversed(conversations):  # Most recent first
-        matches = re.findall(phone_pattern, conv.message)
+        matches = re.findall(PHONE_PATTERN, conv.message)
         if matches:
             phone = matches[0]
             # Normalize to +20 format
@@ -288,16 +291,9 @@ def extract_phone_from_conversations(conversations: List[Conversation]) -> Optio
 
 def extract_name_from_conversations(conversations: List[Conversation]) -> Optional[str]:
     """Extract customer name from conversation history."""
-    import re
-
-    name_patterns = [
-        r'(?:my name is|اسمي|ana|i\'m|i am)\s+([a-zA-Z\u0600-\u06FF]+)',
-        r'(?:name:|الاسم:?)\s+([a-zA-Z\u0600-\u06FF]+)',
-    ]
-
     for conv in reversed(conversations):
         if conv.direction == "incoming":
-            for pattern in name_patterns:
+            for pattern in NAME_PATTERNS:
                 match = re.search(pattern, conv.message, re.IGNORECASE)
                 if match:
                     return match.group(1).strip()
@@ -311,8 +307,8 @@ def format_conversation_for_ai(messages: List[MessageInfo]) -> str:
 
     lines = ["CONVERSATION HISTORY:"]
 
-    # Show last 10 messages for context, but deduplicate consecutive identical messages
-    recent_messages = messages[-10:]
+    # Show last N messages for context, but deduplicate consecutive identical messages
+    recent_messages = messages[-CONTEXT_HISTORY_DISPLAY_LIMIT:]
 
     prev_message = None
     duplicate_count = 0
@@ -331,7 +327,7 @@ def format_conversation_for_ai(messages: List[MessageInfo]) -> str:
         role = "Customer" if msg.direction == "incoming" else "Assistant"
         timestamp = msg.timestamp[:19].replace("T", " ")  # Simplified timestamp
         # Truncate very long messages
-        message_text = msg.message[:500] + "..." if len(msg.message) > 500 else msg.message
+        message_text = msg.message[:MESSAGE_TRUNCATE_LENGTH] + "..." if len(msg.message) > MESSAGE_TRUNCATE_LENGTH else msg.message
         lines.append(f"[{timestamp}] {role}: {message_text}")
         prev_message = msg
 
@@ -355,11 +351,16 @@ async def link_channels(
 
     # Ensure primary customer exists
     await ensure_customer_exists(db, primary_id)
+    await db.commit()  # Commit if customer was just created
 
     # Get primary customer
     stmt = select(Customer).where(Customer.primary_id == primary_id)
     result = await db.execute(stmt)
-    primary_customer = result.scalar_one()
+    primary_customer = result.scalar_one_or_none()
+
+    if not primary_customer:
+        logger.error(f"Customer not found after ensure_customer_exists: {primary_id}")
+        return LinkChannelsResponse(success=False, merged_count=0)
 
     # Add secondary ID to linked_ids if not already there
     linked_ids = primary_customer.linked_ids or []

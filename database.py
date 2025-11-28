@@ -233,6 +233,27 @@ class AnalyticsEvent(Base):
     )
 
 
+class CustomerFact(Base):
+    """Memory Bank - Long-term customer facts and preferences."""
+    __tablename__ = "customer_facts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(String(255), nullable=False, index=True)
+    fact_type = Column(String(100), nullable=False)  # preference, constraint, personal_info
+    fact_key = Column(String(255), nullable=False)  # e.g., "preferred_size", "favorite_color"
+    fact_value = Column(Text, nullable=False)  # The actual value
+    confidence = Column(Integer, default=100)  # 0-100, how confident we are
+    source = Column(String(50))  # 'explicit' (user stated) or 'inferred' (agent deduced)
+    extra_data = Column('metadata', JSONB, default={})  # Additional context
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_customer_facts_customer', 'customer_id'),
+        Index('idx_customer_facts_key', 'customer_id', 'fact_key'),
+    )
+
+
 # ============================================================================
 # Database Session Management
 # ============================================================================

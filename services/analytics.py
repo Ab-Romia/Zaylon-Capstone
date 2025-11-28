@@ -1,28 +1,31 @@
 """
 Analytics tracking and dashboard service.
 """
+import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
+
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import AnalyticsEvent, Conversation, ResponseCache
+
+from database import AnalyticsEvent, Conversation, async_session
 from models import (
     AnalyticsLogResponse, AnalyticsDashboardResponse,
     TopIntent, TopProduct
 )
-import logging
+from core.constants import (
+    AI_COST_PER_1K_INPUT, AI_COST_PER_1K_OUTPUT,
+    AI_INPUT_TOKEN_RATIO, AI_OUTPUT_TOKEN_RATIO
+)
+from core.enums import EventType
 
 logger = logging.getLogger(__name__)
-
-# Cost estimation (approximate OpenAI GPT-4 pricing)
-COST_PER_1K_INPUT_TOKENS = 0.03  # $0.03 per 1K input tokens
-COST_PER_1K_OUTPUT_TOKENS = 0.06  # $0.06 per 1K output tokens
 
 
 async def log_event(
     db: AsyncSession,
     customer_id: str,
-    event_type: str,
+    event_type: Union[str, EventType],
     event_data: Dict[str, Any],
     response_time_ms: Optional[int] = None,
     ai_tokens_used: Optional[int] = None
@@ -39,11 +42,13 @@ async def log_event(
     - product_searched: Product search performed
     - context_retrieved: Conversation context retrieved
     """
-    logger.info(f"Logging event: {event_type} for {customer_id}")
+    # Convert enum to string if needed
+    event_type_str = event_type.value if isinstance(event_type, EventType) else event_type
+    logger.info(f"Logging event: {event_type_str} for {customer_id}")
 
     event = AnalyticsEvent(
         customer_id=customer_id,
-        event_type=event_type,
+        event_type=event_type_str,
         event_data=event_data,
         response_time_ms=response_time_ms,
         ai_tokens_used=ai_tokens_used
@@ -53,6 +58,32 @@ async def log_event(
     await db.commit()
 
     return AnalyticsLogResponse(success=True)
+
+
+async def log_event_background(
+    customer_id: str,
+    event_type: Union[str, EventType],
+    event_data: Dict[str, Any],
+    response_time_ms: Optional[int] = None,
+    ai_tokens_used: Optional[int] = None
+) -> None:
+    """
+    Log an analytics event in a background task with its own database session.
+    This function should be used when logging events from background tasks to avoid
+    session conflicts with the main request handler.
+    """
+    async with async_session() as db:
+        try:
+            await log_event(
+                db=db,
+                customer_id=customer_id,
+                event_type=event_type,
+                event_data=event_data,
+                response_time_ms=response_time_ms,
+                ai_tokens_used=ai_tokens_used
+            )
+        except Exception as e:
+            logger.error(f"Failed to log event in background: {e}", exc_info=True)
 
 
 async def get_dashboard(
@@ -289,13 +320,13 @@ async def estimate_ai_cost(
     result = await db.execute(stmt)
     total_tokens = result.scalar() or 0
 
-    # Estimate cost (assuming 50/50 split between input and output)
-    input_tokens = total_tokens * 0.6  # 60% input
-    output_tokens = total_tokens * 0.4  # 40% output
+    # Estimate cost based on token ratios
+    input_tokens = total_tokens * AI_INPUT_TOKEN_RATIO
+    output_tokens = total_tokens * AI_OUTPUT_TOKEN_RATIO
 
     cost = (
-        (input_tokens / 1000) * COST_PER_1K_INPUT_TOKENS +
-        (output_tokens / 1000) * COST_PER_1K_OUTPUT_TOKENS
+        (input_tokens / 1000) * AI_COST_PER_1K_INPUT +
+        (output_tokens / 1000) * AI_COST_PER_1K_OUTPUT
     )
 
     return cost

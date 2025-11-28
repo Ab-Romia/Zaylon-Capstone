@@ -34,10 +34,10 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Health check
+# Health check (updated for new API structure)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')" || exit 1
+    CMD python -c "import httpx; httpx.get('http://localhost:8000/api/v1/health')" || exit 1
 
-# Run the application
+# Run the application with new structure
 # Use shell form to expand $PORT environment variable (required for Render)
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
