@@ -3,6 +3,12 @@ Sample Product Data Loader
 Adds sample e-commerce products to your Supabase database for testing.
 """
 import asyncio
+import sys
+from pathlib import Path
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from database import async_session, Product
 
 # Sample products in Arabic e-commerce context

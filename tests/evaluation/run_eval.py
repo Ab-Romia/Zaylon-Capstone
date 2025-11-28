@@ -79,7 +79,7 @@ def init_judge_provider():
             try:
                 from openai import AsyncOpenAI
                 judge_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-                judge_model = "gpt-4o-mini"
+                judge_model = "gpt-4o"
                 JUDGE_PROVIDER = "openai"
                 print(f"✓ Using OpenAI ({judge_model}) as LLM judge")
                 return True
@@ -106,7 +106,7 @@ def init_judge_provider():
         try:
             from openai import AsyncOpenAI
             judge_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-            judge_model = "gpt-4o-mini"
+            judge_model = "gpt-4o"
             JUDGE_PROVIDER = "openai"
             print(f"✓ Auto-detected OpenAI API key, using {judge_model} as LLM judge")
             return True
