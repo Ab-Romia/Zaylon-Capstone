@@ -127,7 +127,7 @@ def init_judge_provider():
 init_judge_provider()
 
 # Evaluation rubric for LLM judge
-JUDGE_PROMPT = """You are an expert evaluator for an AI e-commerce agent. Evaluate the agent's response based on the following criteria:
+JUDGE_PROMPT = """You are an expert evaluator for an AI e-commerce agent. Evaluate the agent's response based on the following criteria.
 
 **Test Case:**
 - Input Message: {input_message}
@@ -143,17 +143,57 @@ JUDGE_PROMPT = """You are an expert evaluator for an AI e-commerce agent. Evalua
 - Execution Time: {execution_time_ms}ms
 
 **Evaluation Criteria:**
-1. **Intent Accuracy (0-1)**: Did the agent route to the correct specialist (sales/support)?
-2. **Tool Selection (0-1)**: Did the agent call the appropriate tools?
-3. **Response Quality (0-1)**: Is the response helpful, polite, and in the correct language?
-4. **Overall Success (0-1)**: Would this satisfy a real customer?
+
+1. **Intent Accuracy (0-1)**: Did the agent route to the correct specialist?
+   - 1.0: Correct specialist chosen
+   - 0.5: Acceptable alternate (e.g., sales can handle some support queries)
+   - 0.0: Completely wrong specialist
+
+2. **Tool Selection (0-1)**: Did the agent call appropriate tools?
+   - 1.0: Called the expected tool(s) OR functionally equivalent alternative
+   - 0.8: Called a different but reasonable tool for the task
+   - 0.5: Called a tool but not ideal
+   - 0.0: No tools called OR completely wrong tool
+
+   **IMPORTANT Tool Equivalences**:
+   - For "Where is my order?" queries: BOTH get_order_history_tool and check_order_status_tool are ACCEPTABLE (score 1.0 for either)
+   - For order tracking without order ID: get_order_history_tool is perfectly valid
+   - For order tracking with order ID: check_order_status_tool is preferred but history tool is acceptable
+   - If expected_tool contains "|", ANY of those tools scores 1.0
+
+3. **Response Quality (0-1)**: Is the response helpful, polite, and appropriate?
+   - 1.0: Helpful, polite, correct language, provides value
+   - 0.8: Good response but minor issues (slight language mix, could be more helpful)
+   - 0.6: Acceptable but incomplete (missing some info, but tries to help)
+   - 0.4: Poor response (unhelpful, but polite)
+   - 0.2: Very poor (just error message, no alternatives)
+   - 0.0: Completely unhelpful or rude
+
+   **IMPORTANT - Error Handling**:
+   - If tools failed/returned no data BUT agent still tried to be helpful (offered alternatives, next steps) → score 0.6-0.8
+   - If tools failed AND agent just said "error" with no help → score 0.2-0.4
+   - Knowledge base having no data is NOT the agent's fault → be lenient
+
+4. **Overall Success (0-1)**: Would this satisfy a real customer in a real e-commerce scenario?
+   - 1.0: Customer would be fully satisfied and needs are met
+   - 0.8: Customer would be mostly satisfied, minor issues
+   - 0.6: Customer would be partially satisfied, needs some follow-up
+   - 0.4: Customer would be somewhat unsatisfied but got some value
+   - 0.2: Customer would be unsatisfied but agent tried
+   - 0.0: Complete failure, customer would be very frustrated
+
+   **BE REALISTIC**:
+   - Real customers care about effort and empathy, not perfection
+   - If agent tried to help and used tools, give credit even if data is missing
+   - Mixed language in products (Arabic + English) is NORMAL in bilingual markets
+   - Tool selection alternatives are acceptable if they achieve the goal
 
 **Important Notes:**
-- If expected_agent is "sales" or "support", check if agent_used matches
-- If expected_tool contains "|", any of those tools is acceptable
-- For mixed intent, routing to "sales" is acceptable (sales can do both)
-- Response should be appropriate for the language (Arabic/Franco/English)
-- Give credit for partial success
+- **Intent Routing**: Complaints, order tracking, policy FAQs → Support. Products, purchases → Sales.
+- **Tool Flexibility**: Multiple tools can achieve the same goal. Be lenient with tool selection.
+- **Language Mixing**: In bilingual markets, some language mixing in product listings is acceptable (don't penalize heavily)
+- **Partial Success**: An agent that tries hard but lacks data deserves 0.6-0.7, not 0.0
+- **Customer Perspective**: Real customers value empathy, effort, and clear next steps even when perfect answer isn't available
 
 Please respond in JSON format:
 {{

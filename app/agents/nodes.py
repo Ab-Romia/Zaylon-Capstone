@@ -295,35 +295,41 @@ async def supervisor_node(state: FlowinitState) -> Dict[str, Any]:
 {profile_summary}
 
 **Available Agents**:
-1. **Sales Agent**: Handles product searches, purchases, ordering, product availability, order history, AND can assist with product-related returns
-2. **Support Agent**: Handles ONLY FAQs, policies, general inquiries (NOT specific to customer's orders/purchases)
+1. **Sales Agent**: Handles product searches, purchases, ordering, product availability, order history
+2. **Support Agent**: Handles FAQs, policies, general inquiries, order tracking, complaints, order modifications, cancellations
 
-**CRITICAL ROUTING RULES** (Follow Strictly - Prefer SALES for mixed or unclear queries):
+**CRITICAL ROUTING RULES** (Follow Strictly):
 
-**Route to SALES if asking about:**
+**Route to SUPPORT if asking about** (HIGH PRIORITY - These ALWAYS go to support):
+- **Complaints and Issues**: "I received a damaged item", "Wrong product", "Product is broken", "Item doesn't work"
+- **Order Tracking**: "Where is my order?", "Order status?", "فين طلبي؟", "Track my order"
+- **Order Modifications**: "Can I change my order?", "Cancel my order", "Modify my order"
+- **General Policies ONLY** (without product interest): "What's your return policy?", "What payment methods?", "How do I cancel?"
+- **Shipping Information ONLY** (without ordering): "Do you ship to Cairo?", "How long is shipping?", "Shipping times?"
+- **Account/Help Requests**: "I need help with my purchase", "Help with my order", "Customer support"
+- **Anything related to PROBLEMS, ISSUES, or COMPLAINTS**
+
+**Route to SALES if asking about** (Product-focused queries):
 - Product searches ("Show me hoodies", "عايز بنطلون", "I want a shirt", "blue shirt")
 - Product availability ("Do you have this in stock?", "What sizes?", "What colors?")
 - Prices ("How much is?", "Show me cheap products", "price of hoodie")
 - Making purchases ("I want to buy", "3ayz a3ml order", "I want to purchase")
 - Product recommendations ("Best sellers", "For winter", "comfortable clothes")
 - Saving preferences ("I prefer red", "I like size M")
-- Mixed queries combining products + policies ("Tell me about shipping times, and also I want a black jacket")
-- Mixed queries combining returns + purchases ("I want to return my last order and buy a blue shirt")
-- Anything product-specific or purchase-related
+- Viewing order history for reordering purposes ("I want to reorder my last purchase")
 
-**Route to SUPPORT ONLY if asking about:**
-- General policies WITHOUT product interest ("What's your return policy?", "What payment methods?")
-- Shipping information WITHOUT ordering ("Do you ship to Cairo?", "How long is shipping?")
-- Order tracking ("Where is my order?", "Order status?", "فين طلبي؟")
-- Order modifications ("Can I change my order?", "Cancel my order")
-- Complaints ("Damaged item", "Wrong product")
-- General FAQs that don't involve products ("How to cancel?")
+**Mixed Intent Handling**:
+- If complaint/problem + product interest → Route to **SUPPORT** (Handle problem first)
+- If policy question + product interest → Route to **SALES** (Sales can search KB if needed)
+- If returns/refunds + new purchase → Route to **SALES** (Sales can handle both)
+- If unclear whether problem or product inquiry → Route to **SUPPORT** (Better for ambiguous help requests)
 
-**Mixed Intent - DEFAULT TO SALES**:
-- If BOTH products AND policy questions → Route to **SALES** (Sales can search KB if needed)
-- If BOTH returns AND purchases → Route to **SALES**
-- If unclear or ambiguous → Route to **SALES** (better equipped)
-- ONLY route to Support if it's purely FAQ/policy with NO product interest
+**Decision Logic**:
+1. Check for complaints/problems/issues → SUPPORT
+2. Check for order tracking/modifications → SUPPORT
+3. Check for pure policy questions (no products) → SUPPORT
+4. Check for product searches/purchases → SALES
+5. If completely unclear → SUPPORT (safer default)
 
 **Your Decision**:
 Respond with ONLY one word: "sales" or "support"
@@ -565,6 +571,12 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 ))
 
             # Call agent again with tool results to get final response
+            # Add instruction for better error handling
+            if any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() for tc in tool_calls_info):
+                agent_messages.append(HumanMessage(
+                    content="The tool encountered an error. Please provide a helpful, empathetic response to the customer. Offer alternatives, ask for clarification, or suggest they try again with more specific details. DO NOT just say 'error occurred' - be HELPFUL and SOLUTION-ORIENTED."
+                ))
+
             final_response = await sales_agent.ainvoke(agent_messages)
             response_text = final_response.content if final_response.content else "Based on the search results above, I'm ready to help you. Could you provide more details about what you're looking for?"
         else:
@@ -640,11 +652,22 @@ Examples:
 - "I received a damaged item" → call search_knowledge_base_tool(query="damaged item policy")
 
 **IMPORTANT - Order Tracking Tool Selection**:
-- "Where is my order?" / "فين طلبي؟" / "Order status?" WITHOUT order number → call get_order_history_tool(customer_id="{customer_id}") to see ALL orders, then identify the most recent one
-- "Track order #12345" / "Order status #12345" WITH specific order number → call check_order_status_tool(order_id="12345") for SPECIFIC order
-- "Can I change my order?" WITHOUT order number → call get_order_history_tool first to find their orders
-- "Can I change order #12345?" WITH order number → call check_order_status_tool(order_id="12345")
-- ALWAYS prefer get_order_history_tool unless customer explicitly provides an order ID/number
+FOR GENERAL ORDER TRACKING (most common):
+- "Where is my order?" → call check_order_status_tool(order_id="{customer_id}_latest") to check their most recent order status
+- "فين طلبي؟" → call check_order_status_tool(order_id="{customer_id}_latest")
+- "Order status?" → call check_order_status_tool(order_id="{customer_id}_latest")
+- "What's the status of my order?" → call check_order_status_tool(order_id="{customer_id}_latest")
+
+FOR SPECIFIC ORDER TRACKING:
+- "Track order #12345" → call check_order_status_tool(order_id="12345")
+- "Order status #12345" → call check_order_status_tool(order_id="12345")
+
+FOR ORDER HISTORY/MODIFICATIONS:
+- "Can I change my order?" → call get_order_history_tool(customer_id="{customer_id}") first to find orders
+- "Show me my order history" → call get_order_history_tool(customer_id="{customer_id}")
+- "I want to reorder" → call get_order_history_tool(customer_id="{customer_id}")
+
+RULE: Use check_order_status_tool for ANY order tracking query, use get_order_history_tool only for history/reordering purposes
 
 **When customer asks about products → call semantic_product_search_tool**
 Examples:
@@ -778,6 +801,12 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 ))
 
             # Call agent again with tool results to get final response
+            # Add instruction for better error handling
+            if any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() or "not found" in str(tc.get("result", "")).lower() for tc in tool_calls_info):
+                agent_messages.append(HumanMessage(
+                    content="The tool didn't find the information or encountered an error. Please provide a helpful, empathetic response to the customer. Acknowledge the issue, offer alternatives, suggest contacting support, or ask for more details. DO NOT just say 'no information found' - be HELPFUL and provide NEXT STEPS."
+                ))
+
             final_response = await support_agent.ainvoke(agent_messages)
             response_text = final_response.content if final_response.content else "Based on the information I found, how can I assist you further?"
         else:

@@ -102,7 +102,8 @@ async def create_order(
             customer_phone=request.phone,
             delivery_address=request.address,
             status=OrderStatus.PENDING.value,
-            instagram_user=request.customer_id
+            customer_id=request.customer_id,  # New unified field
+            instagram_user=request.customer_id  # Keep for backwards compatibility
         )
 
         db.add(order)
@@ -140,10 +141,12 @@ async def get_customer_order_history(
     Get customer's recent order history.
     """
     try:
-        # Get orders for customer
+        # Get orders for customer (check both new and old fields for backwards compatibility)
         stmt = (
             select(Order)
-            .where(Order.instagram_user == customer_id)
+            .where(
+                (Order.customer_id == customer_id) | (Order.instagram_user == customer_id)
+            )
             .order_by(Order.created_at.desc())
             .limit(limit)
         )
@@ -175,12 +178,14 @@ async def get_enhanced_customer_metadata(
     Get enhanced customer metadata including order history.
     """
     try:
-        # Get order statistics
+        # Get order statistics (check both new and old fields for backwards compatibility)
         stmt = select(
             func.count(Order.id).label("total_orders"),
             func.sum(Order.total_price).label("total_spent"),
             func.max(Order.created_at).label("last_order")
-        ).where(Order.instagram_user == customer_id)
+        ).where(
+            (Order.customer_id == customer_id) | (Order.instagram_user == customer_id)
+        )
 
         result = await db.execute(stmt)
         stats = result.first()

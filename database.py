@@ -145,6 +145,11 @@ class Product(Base):
     stock_count = Column(Integer, default=0)
     description = Column(Text, default="")
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    category = Column(String(255))
+    tags = Column(ARRAY(String), default=[])
+    is_bestseller = Column(Boolean, default=False)
 
 
 class Order(Base):
@@ -162,8 +167,10 @@ class Order(Base):
     customer_phone = Column(String(50))
     delivery_address = Column(Text)
     status = Column(String(50), default="pending")
-    instagram_user = Column(String(255))
+    instagram_user = Column(String(255))  # Deprecated: use customer_id instead
+    customer_id = Column(String(255), index=True)  # New: unified customer identifier
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
 # ============================================================================
@@ -183,9 +190,14 @@ class Conversation(Base):
     # Map DB column 'metadata' to Python attribute 'extra_data' (metadata is reserved in SQLAlchemy)
     extra_data = Column('metadata', JSONB, default={})
     created_at = Column(DateTime, default=func.now(), index=True)
+    # New fields for agent system
+    thread_id = Column(String(255), index=True)  # For conversation threading
+    agent_used = Column(String(50))  # Which agent handled this message (sales/support)
+    response_time_ms = Column(Integer)  # Response time in milliseconds
 
     __table_args__ = (
         Index('idx_conversations_customer_created', 'customer_id', 'created_at'),
+        Index('idx_conversations_thread_id', 'thread_id', 'created_at'),
     )
 
 
@@ -251,6 +263,27 @@ class CustomerFact(Base):
     __table_args__ = (
         Index('idx_customer_facts_customer', 'customer_id'),
         Index('idx_customer_facts_key', 'customer_id', 'fact_key'),
+    )
+
+
+class KnowledgeBase(Base):
+    """Knowledge base documents for FAQ and policy information."""
+    __tablename__ = "knowledge_base"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    doc_id = Column(String(255), unique=True, nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String(255))
+    tags = Column(ARRAY(String), default=[])
+    extra_data = Column('metadata', JSONB, default={})
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_knowledge_base_category', 'category'),
+        Index('idx_knowledge_base_active', 'is_active'),
     )
 
 
