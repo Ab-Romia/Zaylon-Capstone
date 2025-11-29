@@ -1,6 +1,6 @@
 """
 LangGraph Agent Graph Assembly
-Constructs the Flowinit multi-agent state graph.
+Constructs the Zaylon multi-agent state graph.
 """
 
 import logging
@@ -8,7 +8,7 @@ from typing import Literal
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.agents.state import FlowinitState, NodeName, AgentType
+from app.agents.state import ZaylonState, NodeName, AgentType
 from app.agents.nodes import (
     load_memory_node,
     supervisor_node,
@@ -20,9 +20,9 @@ from app.agents.nodes import (
 logger = logging.getLogger(__name__)
 
 
-def create_flowinit_graph():
+def create_zaylon_graph():
     """
-    Create and compile the Flowinit agent graph.
+    Create and compile the Zaylon agent graph.
 
     Graph Flow:
     START → Load Memory → Supervisor → [Sales | Support] → Save Memory → END
@@ -30,10 +30,10 @@ def create_flowinit_graph():
     Returns:
         Compiled StateGraph ready for invocation
     """
-    logger.info("Building Flowinit agent graph...")
+    logger.info("Building Zaylon agent graph...")
 
     # Initialize the graph with our state schema
-    workflow = StateGraph(FlowinitState)
+    workflow = StateGraph(ZaylonState)
 
     # Add nodes
     workflow.add_node(NodeName.LOAD_MEMORY, load_memory_node)
@@ -73,12 +73,12 @@ def create_flowinit_graph():
     memory = MemorySaver()
     app = workflow.compile(checkpointer=memory)
 
-    logger.info("Flowinit graph compiled successfully!")
+    logger.info("Zaylon graph compiled successfully!")
 
     return app
 
 
-def route_after_supervisor(state: FlowinitState) -> Literal["sales", "support"]:
+def route_after_supervisor(state: ZaylonState) -> Literal["sales", "support"]:
     """
     Routing function for supervisor conditional edge.
 
@@ -100,7 +100,7 @@ def route_after_supervisor(state: FlowinitState) -> Literal["sales", "support"]:
 
 
 # Create singleton instance
-flowinit_graph = create_flowinit_graph()
+zaylon_graph = create_zaylon_graph()
 
 
 async def invoke_agent(
@@ -110,7 +110,7 @@ async def invoke_agent(
     conversation_history: list = None
 ) -> dict:
     """
-    Convenient wrapper to invoke the Flowinit agent.
+    Convenient wrapper to invoke the Zaylon agent.
 
     Args:
         customer_id: Customer identifier
@@ -145,7 +145,7 @@ async def invoke_agent(
     try:
         # Invoke the graph
         logger.info(f"Invoking agent for customer: {customer_id}")
-        result = await flowinit_graph.ainvoke(initial_state, config=config)
+        result = await zaylon_graph.ainvoke(initial_state, config=config)
 
         # Extract relevant information
         return {
@@ -208,7 +208,7 @@ async def stream_agent(
 
     try:
         # Stream the graph execution
-        async for event in flowinit_graph.astream(initial_state, config=config):
+        async for event in zaylon_graph.astream(initial_state, config=config):
             yield event
 
     except Exception as e:

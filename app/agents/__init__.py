@@ -1,15 +1,15 @@
 """
-Flowinit Agent System
+Zaylon Agent System
 Multi-agent orchestration using LangGraph for hierarchical decision-making.
 """
 
 from app.agents.graph import (
-    flowinit_graph,
+    zaylon_graph,
     invoke_agent,
     stream_agent,
-    create_flowinit_graph
+    create_zaylon_graph
 )
-from app.agents.state import FlowinitState, AgentType, NodeName
+from app.agents.state import ZaylonState, AgentType, NodeName
 from app.agents.nodes import (
     load_memory_node,
     supervisor_node,
@@ -20,12 +20,12 @@ from app.agents.nodes import (
 
 __all__ = [
     # Graph
-    "flowinit_graph",
+    "zaylon_graph",
     "invoke_agent",
     "stream_agent",
-    "create_flowinit_graph",
+    "create_zaylon_graph",
     # State
-    "FlowinitState",
+    "ZaylonState",
     "AgentType",
     "NodeName",
     # Nodes

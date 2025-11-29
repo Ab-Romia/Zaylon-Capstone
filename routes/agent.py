@@ -1,5 +1,5 @@
 """
-Agentic system endpoints (Flowinit v2 API).
+Agentic system endpoints (Zaylon v2 API).
 Exposes the LangGraph multi-agent system for production use.
 """
 
@@ -31,17 +31,17 @@ router = APIRouter(prefix="/api/v2/agent", tags=["Agent v2"])
 @router.post(
     "/invoke",
     response_model=AgentInvokeResponse,
-    summary="Invoke Flowinit agent"
+    summary="Invoke Zaylon agent"
 )
 @limiter.limit(get_rate_limit_string())
-async def invoke_flowinit_agent(
+async def invoke_zaylon_agent(
     request: Request,
     body: AgentInvokeRequest,
     db: AsyncSession = Depends(get_db),
     api_key: str = Depends(verify_api_key)
 ):
     """
-    Invoke the Flowinit multi-agent system.
+    Invoke the Zaylon multi-agent system.
 
     **Flow**:
     1. Load customer memory from Memory Bank
@@ -211,7 +211,7 @@ async def invoke_flowinit_agent(
     summary="Stream agent execution"
 )
 @limiter.limit(get_rate_limit_string())
-async def stream_flowinit_agent(
+async def stream_zaylon_agent(
     request: Request,
     body: AgentInvokeRequest,
     api_key: str = Depends(verify_api_key)

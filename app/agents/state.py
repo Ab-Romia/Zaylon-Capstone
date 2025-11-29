@@ -1,6 +1,6 @@
 """
 LangGraph Agent State Schema
-Defines the state structure for the Flowinit multi-agent system.
+Defines the state structure for the Zaylon multi-agent system.
 """
 
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
@@ -8,9 +8,9 @@ from langchain_core.messages import BaseMessage
 import operator
 
 
-class FlowinitState(TypedDict):
+class ZaylonState(TypedDict):
     """
-    State schema for the Flowinit agentic system.
+    State schema for the Zaylon agentic system.
 
     This state is passed between all nodes in the graph and tracks:
     - Conversation history
@@ -48,7 +48,7 @@ class FlowinitState(TypedDict):
 
 
 # Node return type helpers
-def update_state(**kwargs) -> FlowinitState:
+def update_state(**kwargs) -> ZaylonState:
     """Helper to create state updates."""
     return kwargs  # type: ignore
 
