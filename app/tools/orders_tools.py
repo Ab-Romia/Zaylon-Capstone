@@ -74,12 +74,31 @@ async def create_order_tool(
 
             result = await create_order(db, request)
 
-            return json.dumps({
+            # Return complete order details to prevent need for immediate status check
+            response = {
                 "success": result.success,
                 "order_id": result.order_id,
                 "message": result.message,
                 "error": result.error
-            }, ensure_ascii=False)
+            }
+
+            # If successful, include full order details for confirmation
+            if result.success and result.order_id:
+                response["order_details"] = {
+                    "order_id": result.order_id,
+                    "product_name": product_name,
+                    "size": size,
+                    "color": color,
+                    "quantity": quantity,
+                    "total_price": total_price,
+                    "customer_name": customer_name,
+                    "phone": phone,
+                    "address": address,
+                    "status": "pending",
+                    "channel": channel
+                }
+
+            return json.dumps(response, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 

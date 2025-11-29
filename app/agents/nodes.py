@@ -431,10 +431,35 @@ Examples:
 - "Tell me about shipping times, and also I want a black jacket" → call search_knowledge_base_tool(query="shipping times") AND search_products_tool(query="black jacket")
 - "What's your return policy and show me blue shirts" → call both tools
 
-**When customer wants to buy/order → call create_order_tool**
-Examples:
-- "I want to buy size L" → call create_order_tool(...)
-- "3ayz a3ml order" → call create_order_tool(...)
+**When customer wants to buy/order → STRICT SLOT-FILLING REQUIRED**
+
+**CRITICAL - ORDER CREATION RULES (MUST FOLLOW)**:
+Before calling create_order_tool, you MUST verify ALL required information is available:
+
+1. **Product Information**: product_id, product_name, size, color, quantity, total_price
+   - Get from search_products_tool results
+   - NEVER guess or make up product IDs
+
+2. **Customer Information**: customer_name, phone, address
+   - Check the Customer Profile above for saved contact info
+   - If ANY of these are missing → ASK the customer for them
+   - NEVER use placeholder data like "John Doe", "+201234567890", "123 Main Street"
+   - NEVER guess or make up customer information
+   - If customer says "my name is X" or "my address is Y" → FIRST call save_customer_fact_tool to save it, THEN proceed with order
+
+3. **Slot-Filling Example**:
+   - Customer: "I want to buy 3 Medium blue shirts"
+   - You: search_products_tool(query="blue shirts") → get product_id, price
+   - Check profile for customer_name, phone, address
+   - If missing: "Great! To complete your order, I need your full name, phone number, and delivery address."
+   - Wait for customer to provide
+   - Customer provides info → save_customer_fact_tool for each piece
+   - Then: create_order_tool(...) with REAL data only
+
+4. **After Order Creation - DO NOT call check_order_status_tool immediately**:
+   - The create_order_tool response contains ALL order details
+   - Use the order_id and details from the creation response to confirm with customer
+   - NEVER check status of a just-created order (causes race conditions)
 
 **When customer asks about order status/history → call get_order_history_tool or check_order_status_tool**
 Examples:
@@ -446,13 +471,21 @@ Examples:
 1. NEVER respond without calling a tool first for product/order queries
 2. NEVER say "I'm processing your request" - call the tool immediately
 3. NEVER make up product information - use tools only
-4. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
+4. **NEVER HALLUCINATE ERRORS**: If a tool returns success: true, TRUST IT and confirm to customer
+   - Example: create_order_tool returns {{"success": true, "order_id": "ABC123"}}
+   - You MUST say: "Your order ABC123 has been placed successfully!"
+   - DO NOT say: "There was an issue" or "I couldn't create the order" when success=true
+5. **NEVER USE FAKE/PLACEHOLDER DATA**: ALWAYS ask customer for missing info, NEVER guess
+   - FORBIDDEN: "John Doe", "Jane Smith", "+201234567890", "123 Main Street", "Cairo, Egypt" as defaults
+   - REQUIRED: Real customer data provided by the actual customer
+6. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
    - English input → English response
    - Arabic input (عربي) → Arabic response (عربي)
    - Franco-Arabic input (3ayez, 7aga, etc.) → Franco-Arabic response
    - Detect Franco-Arabic by numbers in text: 3=ع, 7=ح, 2=أ, 5=خ, 8=ق, 9=ص
-5. After getting tool results, provide a natural, helpful response in the customer's EXACT language
-6. ALWAYS use customer preferences from profile when available
+7. After getting tool results, provide a natural, helpful response in the customer's EXACT language
+8. ALWAYS use customer preferences from profile when available
+9. **RESPECT TOOL OUTPUTS**: Parse the JSON response from tools carefully and respond based on actual success/failure, not assumptions
 
 **Available Tools**:
 - search_products_tool(query, limit=5) - Search products by keyword
@@ -576,8 +609,28 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 new_messages.append(tool_message)  # CRITICAL: Track for state update
 
             # Call agent again with tool results to get final response
-            # Add instruction for better error handling
-            if any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() for tc in tool_calls_info):
+            # Add strong instructions to respect tool outputs
+            has_errors = any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() for tc in tool_calls_info)
+            has_success = any("success" in str(tc.get("result", "")).lower() and '"success": true' in str(tc.get("result", "")).lower() for tc in tool_calls_info)
+
+            # CRITICAL: Force agent to respect tool outputs (prevent hallucinations)
+            if has_success:
+                agent_messages.append(HumanMessage(
+                    content="""CRITICAL INSTRUCTION: The tool execution was SUCCESSFUL (success: true in JSON response). You MUST:
+
+1. Parse the JSON response carefully
+2. If it contains success: true → Tell the customer the operation succeeded
+3. If it contains order_id → Confirm the order ID to the customer
+4. If it contains order_details → Confirm all details (product, size, color, quantity, price, delivery info)
+5. NEVER say "there was an issue" or "I couldn't complete" when success=true
+6. NEVER ignore the order_details in the response - use them to confirm with the customer
+
+Example: If create_order_tool returned success: true with order_id: "ABC123", you MUST say something like:
+"Great! Your order ABC123 has been placed successfully. We'll deliver [quantity] [color] [product_name] in size [size] to [address]. Total: [price] EGP."
+
+DO NOT hallucinate failures. TRUST the tool output."""
+                ))
+            elif has_errors:
                 agent_messages.append(HumanMessage(
                     content="The tool encountered an error. Please provide a helpful, empathetic response to the customer. Offer alternatives, ask for clarification, or suggest they try again with more specific details. DO NOT just say 'error occurred' - be HELPFUL and SOLUTION-ORIENTED."
                 ))
@@ -815,8 +868,25 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 new_messages.append(tool_message)  # CRITICAL: Track for state update
 
             # Call agent again with tool results to get final response
-            # Add instruction for better error handling
-            if any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() or "not found" in str(tc.get("result", "")).lower() for tc in tool_calls_info):
+            # Add strong instructions to respect tool outputs
+            has_errors = any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() or "not found" in str(tc.get("result", "")).lower() for tc in tool_calls_info)
+            has_success = any("success" in str(tc.get("result", "")).lower() and '"success": true' in str(tc.get("result", "")).lower() for tc in tool_calls_info)
+
+            # CRITICAL: Force agent to respect tool outputs (prevent hallucinations)
+            if has_success:
+                agent_messages.append(HumanMessage(
+                    content="""CRITICAL INSTRUCTION: The tool execution was SUCCESSFUL (success: true in JSON response). You MUST:
+
+1. Parse the JSON response carefully
+2. If it contains success: true → Tell the customer the operation succeeded
+3. If it contains order information → Provide the order details to the customer
+4. If it contains policy/FAQ information → Share that information clearly
+5. NEVER say "I couldn't find" or "there was an issue" when success=true
+6. NEVER ignore successful results - use them to help the customer
+
+DO NOT hallucinate failures. TRUST the tool output."""
+                ))
+            elif has_errors:
                 agent_messages.append(HumanMessage(
                     content="The tool didn't find the information or encountered an error. Please provide a helpful, empathetic response to the customer. Acknowledge the issue, offer alternatives, suggest contacting support, or ask for more details. DO NOT just say 'no information found' - be HELPFUL and provide NEXT STEPS."
                 ))
