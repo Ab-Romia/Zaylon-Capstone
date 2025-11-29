@@ -507,11 +507,14 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
         # Execute tools if requested
         tool_calls_info = []
+        new_messages = []  # Track ALL new messages to return to state
+
         if tools_called:
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
             agent_messages.append(response)
+            new_messages.append(response)  # CRITICAL: Track this for state update
 
             # Execute each tool call
             for tool_call in tool_calls_list:
@@ -565,10 +568,12 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 })
 
                 # Add tool result to conversation (AFTER the AIMessage with tool_calls)
-                agent_messages.append(ToolMessage(
+                tool_message = ToolMessage(
                     content=str(tool_result),
                     tool_call_id=tool_id
-                ))
+                )
+                agent_messages.append(tool_message)
+                new_messages.append(tool_message)  # CRITICAL: Track for state update
 
             # Call agent again with tool results to get final response
             # Add instruction for better error handling
@@ -578,16 +583,20 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 ))
 
             final_response = await sales_agent.ainvoke(agent_messages)
+            new_messages.append(final_response)  # CRITICAL: Track final response too
             response_text = final_response.content if final_response.content else "Based on the search results above, I'm ready to help you. Could you provide more details about what you're looking for?"
         else:
             # No tools called even after retry - fallback
             logger.error("[SALES AGENT] NO TOOLS CALLED even after retry!")
             response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our product database. Please try again."
+            new_messages = [response]  # Return the response even without tools
 
         thought = f"Sales agent processed request (used {len(tool_calls_info)} tools)"
 
+        logger.info(f"[SALES AGENT] Returning {len(new_messages)} messages to state (preserves tool_calls+responses)")
+
         return {
-            "messages": [response],
+            "messages": new_messages,  # ✅ Return ALL messages: AIMessage(tool_calls), ToolMessages, final AIMessage
             "final_response": response_text,
             "chain_of_thought": [thought],
             "tool_calls": tool_calls_info,
@@ -737,11 +746,14 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
         # Execute tools if requested
         tool_calls_info = []
+        new_messages = []  # Track ALL new messages to return to state
+
         if tools_called:
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
             agent_messages.append(response)
+            new_messages.append(response)  # CRITICAL: Track this for state update
 
             # Execute each tool call
             for tool_call in tool_calls_list:
@@ -795,10 +807,12 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 })
 
                 # Add tool result to conversation (AFTER the AIMessage with tool_calls)
-                agent_messages.append(ToolMessage(
+                tool_message = ToolMessage(
                     content=str(tool_result),
                     tool_call_id=tool_id
-                ))
+                )
+                agent_messages.append(tool_message)
+                new_messages.append(tool_message)  # CRITICAL: Track for state update
 
             # Call agent again with tool results to get final response
             # Add instruction for better error handling
@@ -808,16 +822,20 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 ))
 
             final_response = await support_agent.ainvoke(agent_messages)
+            new_messages.append(final_response)  # CRITICAL: Track final response too
             response_text = final_response.content if final_response.content else "Based on the information I found, how can I assist you further?"
         else:
             # No tools called even after retry - fallback
             logger.error("[SUPPORT AGENT] NO TOOLS CALLED even after retry!")
             response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our support systems. Please try again or contact our support team directly."
+            new_messages = [response]  # Return the response even without tools
 
         thought = f"Support agent processed request (used {len(tool_calls_info)} tools)"
 
+        logger.info(f"[SUPPORT AGENT] Returning {len(new_messages)} messages to state (preserves tool_calls+responses)")
+
         return {
-            "messages": [response],
+            "messages": new_messages,  # ✅ Return ALL messages: AIMessage(tool_calls), ToolMessages, final AIMessage
             "final_response": response_text,
             "chain_of_thought": [thought],
             "tool_calls": tool_calls_info,
