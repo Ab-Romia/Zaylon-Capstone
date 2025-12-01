@@ -70,7 +70,7 @@ async def test_basic_sales_flow():
     assert "memory" in cot.lower() or "facts" in cot.lower(), "Memory node didn't run"
     assert "sales" in cot.lower() or "Sales" in cot, "Sales agent didn't run"
 
-    print("\n✓ Test 1 PASSED")
+    print("\n[PASS] Test 1 PASSED")
     return True
 
 
@@ -112,7 +112,7 @@ async def test_support_flow():
     cot = " ".join(result.get('chain_of_thought', []))
     assert "support" in cot.lower() or "Support" in cot, "Support agent didn't run"
 
-    print("\n✓ Test 2 PASSED")
+    print("\n[PASS] Test 2 PASSED")
     return True
 
 
@@ -167,7 +167,7 @@ async def test_memory_persistence():
     for key, value in user_profile.items():
         print(f"  - {key}: {value}")
 
-    print("\n✓ Test 3 PASSED (memory system operational)")
+    print("\n[PASS] Test 3 PASSED (memory system operational)")
     return True
 
 
@@ -207,7 +207,7 @@ async def test_mixed_intent():
     cot = " ".join(result.get('chain_of_thought', []))
     assert "sales" in cot.lower() or "Sales" in cot, "Expected routing to Sales for mixed intent"
 
-    print("\n✓ Test 4 PASSED")
+    print("\n[PASS] Test 4 PASSED")
     return True
 
 
@@ -240,7 +240,7 @@ async def test_graph_structure():
         print(f"  - {node}")
         assert node in graph_nodes, f"Missing node: {node}"
 
-    print("\n✓ Test 5 PASSED (all nodes present)")
+    print("\n[PASS] Test 5 PASSED (all nodes present)")
     return True
 
 
@@ -266,10 +266,10 @@ async def run_all_tests():
             await test_func()
             passed += 1
         except AssertionError as e:
-            print(f"\n✗ Test '{test_name}' FAILED: {e}")
+            print(f"\n[FAIL] Test '{test_name}' FAILED: {e}")
             failed += 1
         except Exception as e:
-            print(f"\n✗ Test '{test_name}' ERROR: {e}")
+            print(f"\n[FAIL] Test '{test_name}' ERROR: {e}")
             failed += 1
             import traceback
             traceback.print_exc()
@@ -283,20 +283,20 @@ async def run_all_tests():
     print(f"Success Rate: {(passed/len(tests)*100):.1f}%")
 
     if failed == 0:
-        print("\n🎉 ALL TESTS PASSED!")
+        print("\nSUCCESS ALL TESTS PASSED!")
     else:
-        print(f"\n⚠️  {failed} test(s) failed")
+        print(f"\n[WARNING]  {failed} test(s) failed")
 
     return failed == 0
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Zaylon Agent Graph Tests...")
+    print("\nStarting Starting Zaylon Agent Graph Tests...")
     print("=" * 80)
 
     # Check for OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
-        print("\n⚠️  WARNING: OPENAI_API_KEY not found in environment")
+        print("\n[WARNING]  WARNING: OPENAI_API_KEY not found in environment")
         print("Please set it in .env file or export it:")
         print("  export OPENAI_API_KEY='your-key-here'")
         print("\nTests will fail without a valid API key.\n")

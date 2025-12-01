@@ -481,7 +481,7 @@ async def run_evaluation():
     print(f"  Tests with ≥80% Success: {metrics['success_rate_80_plus']:.2%}")
 
     if metrics['avg_overall_success'] >= 0.80:
-        print(f"\n🎉 SUCCESS! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate!")
+        print(f"\nSUCCESS SUCCESS! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate!")
     elif metrics['avg_overall_success'] >= 0.70:
         print(f"\n[OK] PASS! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate.")
     else:

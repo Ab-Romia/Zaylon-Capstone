@@ -50,12 +50,12 @@ async def test_agent_invoke():
 
             if response.status_code == 200:
                 data = response.json()
-                print(f"✓ Success: {data['success']}")
-                print(f"✓ Agent Used: {data['agent_used']}")
-                print(f"✓ Execution Time: {data['execution_time_ms']}ms")
-                print(f"✓ Response Preview: {data['response'][:200]}...")
-                print(f"✓ Chain of Thought Steps: {len(data['chain_of_thought'])}")
-                print(f"✓ Tool Calls: {len(data['tool_calls'])}")
+                print(f"[PASS] Success: {data['success']}")
+                print(f"[PASS] Agent Used: {data['agent_used']}")
+                print(f"[PASS] Execution Time: {data['execution_time_ms']}ms")
+                print(f"[PASS] Response Preview: {data['response'][:200]}...")
+                print(f"[PASS] Chain of Thought Steps: {len(data['chain_of_thought'])}")
+                print(f"[PASS] Tool Calls: {len(data['tool_calls'])}")
 
                 # Print chain of thought
                 if data['chain_of_thought']:
@@ -70,11 +70,11 @@ async def test_agent_invoke():
                         print(f"  {i}. {tool['tool_name']} - Success: {tool['success']}")
 
             else:
-                print(f"✗ Error: {response.status_code}")
+                print(f"[FAIL] Error: {response.status_code}")
                 print(f"Response: {response.text}")
 
         except Exception as e:
-            print(f"✗ Exception: {e}")
+            print(f"[FAIL] Exception: {e}")
 
         # Test 2: Support flow
         print("\n\n[Test 2] Support Flow - Order Status Inquiry")
@@ -97,17 +97,17 @@ async def test_agent_invoke():
 
             if response.status_code == 200:
                 data = response.json()
-                print(f"✓ Success: {data['success']}")
-                print(f"✓ Agent Used: {data['agent_used']}")
-                print(f"✓ Execution Time: {data['execution_time_ms']}ms")
-                print(f"✓ Response Preview: {data['response'][:200]}...")
+                print(f"[PASS] Success: {data['success']}")
+                print(f"[PASS] Agent Used: {data['agent_used']}")
+                print(f"[PASS] Execution Time: {data['execution_time_ms']}ms")
+                print(f"[PASS] Response Preview: {data['response'][:200]}...")
 
             else:
-                print(f"✗ Error: {response.status_code}")
+                print(f"[FAIL] Error: {response.status_code}")
                 print(f"Response: {response.text}")
 
         except Exception as e:
-            print(f"✗ Exception: {e}")
+            print(f"[FAIL] Exception: {e}")
 
         # Test 3: Memory persistence
         print("\n\n[Test 3] Memory Persistence - Follow-up Message")
@@ -129,8 +129,8 @@ async def test_agent_invoke():
 
         if response_1.status_code == 200:
             data_1 = response_1.json()
-            print(f"✓ First response: {data_1['response'][:150]}...")
-            print(f"✓ Memory saved: {len(data_1.get('user_profile', {}))} facts")
+            print(f"[PASS] First response: {data_1['response'][:150]}...")
+            print(f"[PASS] Memory saved: {len(data_1.get('user_profile', {}))} facts")
 
         # Wait a moment
         await asyncio.sleep(2)
@@ -151,15 +151,15 @@ async def test_agent_invoke():
 
         if response_2.status_code == 200:
             data_2 = response_2.json()
-            print(f"✓ Second response: {data_2['response'][:150]}...")
-            print(f"✓ Memory loaded: {len(data_2.get('user_profile', {}))} facts")
+            print(f"[PASS] Second response: {data_2['response'][:150]}...")
+            print(f"[PASS] Memory loaded: {len(data_2.get('user_profile', {}))} facts")
 
             # Check if memory was used
             response_text = data_2['response'].lower()
             if 'red' in response_text or 'medium' in response_text or 'm' in response_text:
-                print("✓ Memory appears to be working (response mentions preferences)")
+                print("[PASS] Memory appears to be working (response mentions preferences)")
             else:
-                print("⚠ Memory may not be fully integrated")
+                print("[WARNING] Memory may not be fully integrated")
 
         print("\n" + "=" * 80)
         print("Testing Complete")
@@ -208,20 +208,20 @@ async def test_streaming():
                                 elif chunk_type == "response":
                                     print(f"💬 Response: {content[:100]}...")
                                 elif chunk_type == "final":
-                                    print(f"✓ {content}")
+                                    print(f"[PASS] {content}")
                                     break
                                 elif chunk_type == "error":
-                                    print(f"✗ Error: {content}")
+                                    print(f"[FAIL] Error: {content}")
                                     break
 
                             except json.JSONDecodeError:
-                                print(f"⚠ Could not parse: {data_str}")
+                                print(f"[WARNING] Could not parse: {data_str}")
 
                 else:
-                    print(f"✗ Error: {response.status_code}")
+                    print(f"[FAIL] Error: {response.status_code}")
 
         except Exception as e:
-            print(f"✗ Exception during streaming: {e}")
+            print(f"[FAIL] Exception during streaming: {e}")
 
 
 async def main():
@@ -239,7 +239,7 @@ async def main():
         await test_streaming()
 
     except Exception as e:
-        print(f"\n✗ Test suite failed: {e}")
+        print(f"\n[FAIL] Test suite failed: {e}")
         import traceback
         traceback.print_exc()
 
@@ -256,4 +256,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\n✗ Tests cancelled by user")
+        print("\n\n[FAIL] Tests cancelled by user")
