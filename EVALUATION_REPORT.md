@@ -1,4 +1,4 @@
-# Flowinit Agent Evaluation Report
+# Zaylon Agent Evaluation Report
 
 **Generated**: 2025-12-01 01:16:14
 **Evaluation Method**: LLM-as-a-Judge (gpt-4o)
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The Flowinit multi-agent system was evaluated against a golden dataset of 30 realistic customer interactions covering:
+The Zaylon multi-agent system was evaluated against a golden dataset of 30 realistic customer interactions covering:
 - **Sales scenarios** (product search, purchases, orders)
 - **Support scenarios** (FAQs, order tracking, complaints)
 - **Mixed intent** (combined sales + support needs)
@@ -132,7 +132,7 @@ These scenarios had lower success rates:
 
 ## Conclusion
 
-The Flowinit multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **67.3%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
+The Zaylon multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **67.3%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
 
 - ✅ Effective routing and specialization
 - ✅ Proper tool usage and integration

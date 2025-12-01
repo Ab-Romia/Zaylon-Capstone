@@ -32,7 +32,7 @@ We offer a 30-day return policy for all products. Here are the details:
 
 **Exchanges**: Free exchanges for different sizes or colors within 30 days.
 
-For questions, contact support@flowinit.com or call +20 123 456 7890.""",
+For questions, contact support@zaylon.com or call +20 123 456 7890.""",
         "metadata": {
             "title": "Return Policy",
             "category": "policies",
@@ -118,7 +118,7 @@ We accept the following payment methods:
 You can cancel your order if it hasn't shipped yet.
 
 **Before Shipment**:
-1. Contact customer support immediately at support@flowinit.com or +20 123 456 7890
+1. Contact customer support immediately at support@zaylon.com or +20 123 456 7890
 2. Provide your order number
 3. We'll cancel and refund your order within 24 hours
 
@@ -149,7 +149,7 @@ For urgent cancellations, call us at +20 123 456 7890 (9 AM - 6 PM daily).""",
 
 **Before Shipment**:
 You can modify your order (size, color, quantity) before it ships:
-1. Contact customer support at support@flowinit.com or +20 123 456 7890
+1. Contact customer support at support@zaylon.com or +20 123 456 7890
 2. Provide your order number and the changes you want
 3. We'll update your order if the items are available
 4. You'll receive a confirmation of the changes
@@ -186,7 +186,7 @@ We're sorry if you received a damaged item. Here's what to do:
 **Immediate Steps**:
 1. Take photos of the damaged item and packaging
 2. Do NOT discard the item or packaging
-3. Contact us within 48 hours of delivery at support@flowinit.com or +20 123 456 7890
+3. Contact us within 48 hours of delivery at support@zaylon.com or +20 123 456 7890
 
 **Resolution Options**:
 1. **Full Refund**: Return the item for a complete refund
@@ -206,7 +206,7 @@ All our products undergo quality checks. If you receive a damaged item, it's our
 - Free replacement or full refund
 - Includes issues like stitching defects, color fading, fabric tears
 
-**Contact**: support@flowinit.com | +20 123 456 7890 (9 AM - 6 PM daily)""",
+**Contact**: support@zaylon.com | +20 123 456 7890 (9 AM - 6 PM daily)""",
         "metadata": {
             "title": "Damaged Items Policy",
             "category": "policies",
@@ -252,7 +252,7 @@ Pants and Jeans:
 - Size down for fitted look
 - Check product descriptions for fit notes
 
-**Still Unsure?**: Contact us at support@flowinit.com with your measurements for personalized recommendations.""",
+**Still Unsure?**: Contact us at support@zaylon.com with your measurements for personalized recommendations.""",
         "metadata": {
             "title": "Sizing Guide",
             "category": "guides",

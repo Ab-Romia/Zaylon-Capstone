@@ -196,18 +196,20 @@ class VectorDatabase:
                 if conditions:
                     query_filter = Filter(must=conditions)
 
-            # Perform search
-            search_results = self.client.search(
+            # Perform search using query_points (replaces deprecated search method)
+            # Note: query_points returns a response object with .points attribute
+            search_response = self.client.query_points(
                 collection_name=collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 limit=limit,
                 score_threshold=score_threshold,
                 query_filter=query_filter
             )
 
             # Format results with null checks
+            # query_points returns a response object, access .points to get the list
             results = []
-            for hit in search_results:
+            for hit in search_response.points:
                 results.append({
                     "id": str(hit.id),
                     "score": hit.score if hit.score is not None else 0.0,

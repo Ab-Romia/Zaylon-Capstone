@@ -1,4 +1,4 @@
-# Flowinit: Hierarchical Multi-Agent E-commerce Assistant
+# Zaylon: Hierarchical Multi-Agent E-commerce Assistant
 
 > **AI Engineering Capstone Project**: A production-ready, LangGraph-powered multi-agent system for e-commerce customer service automation.
 
@@ -9,7 +9,7 @@
 
 ## 🎯 Project Overview
 
-**Flowinit** is an intelligent e-commerce assistant that uses a **hierarchical multi-agent architecture** to handle complex customer conversations. Unlike traditional chatbots that use a single LLM, Flowinit employs:
+**Zaylon** is an intelligent e-commerce assistant that uses a **hierarchical multi-agent architecture** to handle complex customer conversations. Unlike traditional chatbots that use a single LLM, Zaylon employs:
 
 - **Supervisor Agent**: Routes customer queries to specialized sub-agents
 - **Sales Agent**: Handles product search, orders, and purchases (6 tools)
@@ -25,7 +25,7 @@ Traditional e-commerce bots struggle with:
 - ❌ No long-term memory of customer preferences
 - ❌ Poor handling of vague or ambiguous queries
 
-**Flowinit solves these with agents**:
+**Zaylon solves these with agents**:
 - ✅ Supervisor intelligently routes to the right specialist
 - ✅ Each agent has specialized tools for its domain
 - ✅ Memory Bank persists customer facts across sessions
@@ -154,8 +154,8 @@ python main.py
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
 
 # With Docker
-docker build -t flowinit .
-docker run -p 8000:8000 --env-file .env flowinit
+docker build -t zaylon .
+docker run -p 8000:8000 --env-file .env zaylon
 ```
 
 Service will be available at:
@@ -171,7 +171,7 @@ Service will be available at:
 
 #### POST `/api/v2/agent/invoke`
 
-Invoke the Flowinit multi-agent system.
+Invoke the Zaylon multi-agent system.
 
 **Request:**
 ```json
@@ -263,7 +263,7 @@ See [V1 API Documentation](./docs/V1_API.md) for details.
 
 ## 🧪 Evaluation Results
 
-The Flowinit agent was evaluated against a **golden dataset of 30 test cases** using **LLM-as-a-Judge** (GPT-4o). Test cases cover:
+The Zaylon agent was evaluated against a **golden dataset of 30 test cases** using **LLM-as-a-Judge** (GPT-4o). Test cases cover:
 
 - ✅ Sales scenarios (product search, orders)
 - ✅ Support scenarios (FAQs, order tracking)
@@ -327,7 +327,7 @@ Enable LangSmith for debugging agent reasoning:
 ```bash
 export LANGSMITH_API_KEY="your-langsmith-key"
 export LANGSMITH_TRACING=true
-export LANGSMITH_PROJECT="flowinit-prod"
+export LANGSMITH_PROJECT="zaylon-prod"
 ```
 
 View traces at: https://smith.langchain.com
@@ -355,12 +355,12 @@ View traces at: https://smith.langchain.com
 ### Docker
 
 ```bash
-docker build -t flowinit .
+docker build -t zaylon .
 docker run -d \
   -p 8000:8000 \
   --env-file .env \
-  --name flowinit \
-  flowinit
+  --name zaylon \
+  zaylon
 ```
 
 ---
@@ -397,7 +397,7 @@ docker run -d \
 - ❌ No observability into reasoning
 - ❌ Expensive (every query hits LLM)
 
-### After (Flowinit Agentic System)
+### After (Zaylon Agentic System)
 
 - ✅ Specialized agents with domain expertise
 - ✅ Memory Bank for personalization
@@ -423,7 +423,7 @@ docker run -d \
 AI_Microservices/
 ├── app/
 │   ├── agents/              # LangGraph agent system
-│   │   ├── state.py         # FlowinitState schema
+│   │   ├── state.py         # ZaylonState schema
 │   │   ├── nodes.py         # Agent nodes (supervisor, sales, support)
 │   │   └── graph.py         # Graph assembly & execution
 │   └── tools/               # LangChain tool wrappers
@@ -502,7 +502,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🔗 Links
 
-- **Documentation**: [FLOWINIT_TRANSFORMATION.md](./FLOWINIT_TRANSFORMATION.md)
+- **Documentation**: [ZAYLON_TRANSFORMATION.md](./ZAYLON_TRANSFORMATION.md)
 - **Evaluation Report**: [EVALUATION_REPORT.md](./EVALUATION_REPORT.md)
 - **Capstone Writeup**: [CAPSTONE_WRITEUP.md](./CAPSTONE_WRITEUP.md)
 - **API Docs**: http://localhost:8000/docs

@@ -1,5 +1,5 @@
 """
-Flowinit AI Microservices - Agentic Architecture
+Zaylon AI Microservices - Agentic Architecture
 App package containing tools, agents, and core business logic.
 """
 

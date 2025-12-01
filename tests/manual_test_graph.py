@@ -1,5 +1,5 @@
 """
-Manual Test Script for Flowinit Agent Graph
+Manual Test Script for Zaylon Agent Graph
 Tests the LangGraph implementation with sample inputs.
 
 Usage:
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from langchain_core.messages import HumanMessage
-from app.agents import invoke_agent, flowinit_graph
+from app.agents import invoke_agent, zaylon_graph
 from app.agents.state import NodeName
 
 # Configure logging
@@ -221,7 +221,7 @@ async def test_graph_structure():
     print("="*80)
 
     # Check that graph has all expected nodes
-    graph_nodes = list(flowinit_graph.nodes.keys())
+    graph_nodes = list(zaylon_graph.nodes.keys())
 
     print(f"\nNodes in graph: {len(graph_nodes)}")
     for node in graph_nodes:
@@ -247,7 +247,7 @@ async def test_graph_structure():
 async def run_all_tests():
     """Run all test cases."""
     print("\n" + "="*80)
-    print("FLOWINIT AGENT GRAPH - TEST SUITE")
+    print("ZAYLON AGENT GRAPH - TEST SUITE")
     print("="*80)
 
     tests = [
@@ -291,7 +291,7 @@ async def run_all_tests():
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Flowinit Agent Graph Tests...")
+    print("\n🚀 Starting Zaylon Agent Graph Tests...")
     print("=" * 80)
 
     # Check for OpenAI API key

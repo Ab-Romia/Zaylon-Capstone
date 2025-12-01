@@ -1,8 +1,8 @@
-# Flowinit Agent Tests
+# Zaylon Agent Tests
 
 ## Overview
 
-This directory contains test suites for the Flowinit agentic system.
+This directory contains test suites for the Zaylon agentic system.
 
 ## Test Files
 

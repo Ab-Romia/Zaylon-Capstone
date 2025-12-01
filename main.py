@@ -146,7 +146,7 @@ app.include_router(cache_router)
 app.include_router(analytics_router)
 app.include_router(n8n_router)
 app.include_router(rag_router)
-app.include_router(agent_router)  # Flowinit v2 agentic API
+app.include_router(agent_router)  # Zaylon v2 agentic API
 
 
 if __name__ == "__main__":

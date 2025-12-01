@@ -287,52 +287,40 @@ async def supervisor_node(state: ZaylonState) -> Dict[str, Any]:
         }
 
     # Supervisor routing prompt
-    routing_prompt = f"""You are a routing supervisor for an e-commerce chatbot. Your job is to analyze the customer's message and decide which specialist should handle it.
+    routing_prompt = f"""You are a routing supervisor for an e-commerce chatbot. Analyze the customer's message and route to the correct specialist.
 
 **Customer Message**: "{last_message}"
 
 **Customer Profile**:
 {profile_summary}
 
-**Available Agents**:
-1. **Sales Agent**: Handles product searches, purchases, ordering, product availability, order history
-2. **Support Agent**: Handles FAQs, policies, general inquiries, order tracking, complaints, order modifications, cancellations
+**Available Specialists**:
+1. **Sales Agent**: Product searches, recommendations, purchases, availability, colors, sizes, prices
+2. **Support Agent**: Problems, complaints, order tracking, cancellations, policies, FAQs
 
-**CRITICAL ROUTING RULES** (Follow Strictly):
+**ROUTING RULES** (Strict Priority Order):
 
-**Route to SUPPORT if asking about** (HIGH PRIORITY - These ALWAYS go to support):
-- **Complaints and Issues**: "I received a damaged item", "Wrong product", "Product is broken", "Item doesn't work"
-- **Order Tracking**: "Where is my order?", "Order status?", "فين طلبي؟", "Track my order"
-- **Order Modifications**: "Can I change my order?", "Cancel my order", "Modify my order"
-- **General Policies ONLY** (without product interest): "What's your return policy?", "What payment methods?", "How do I cancel?"
-- **Shipping Information ONLY** (without ordering): "Do you ship to Cairo?", "How long is shipping?", "Shipping times?"
-- **Account/Help Requests**: "I need help with my purchase", "Help with my order", "Customer support"
-- **Anything related to PROBLEMS, ISSUES, or COMPLAINTS**
+**ALWAYS Route to SALES if**:
+- Asking about PRODUCTS: "show me", "I want", "عايز", "looking for", "do you have", "عندك"
+- Asking about COLORS/SIZES: "what colors", "what sizes", "sizes available"
+- Asking about PRICES: "how much", "cheap", "expensive", "price"
+- PRODUCT TYPES mentioned: hoodies, shirts, pants, t-shirts, sweaters, jackets, etc.
+- Product recommendations or browsing: "best", "recommend", "popular", "new"
 
-**Route to SALES if asking about** (Product-focused queries):
-- Product searches ("Show me hoodies", "عايز بنطلون", "I want a shirt", "blue shirt")
-- Product availability ("Do you have this in stock?", "What sizes?", "What colors?")
-- Prices ("How much is?", "Show me cheap products", "price of hoodie")
-- Making purchases ("I want to buy", "3ayz a3ml order", "I want to purchase")
-- Product recommendations ("Best sellers", "For winter", "comfortable clothes")
-- Saving preferences ("I prefer red", "I like size M")
-- Viewing order history for reordering purposes ("I want to reorder my last purchase")
+**Route to SUPPORT if**:
+- PROBLEMS/COMPLAINTS: "damaged", "broken", "wrong item", "not working", "issue"
+- ORDER TRACKING: "where is my order", "order status", "فين طلبي", "track"
+- MODIFICATIONS: "cancel order", "change order", "modify", "refund"
+- PURE POLICIES (no products): "return policy", "shipping policy", "payment methods"
 
-**Mixed Intent Handling**:
-- If complaint/problem + product interest → Route to **SUPPORT** (Handle problem first)
-- If policy question + product interest → Route to **SALES** (Sales can search KB if needed)
-- If returns/refunds + new purchase → Route to **SALES** (Sales can handle both)
-- If unclear whether problem or product inquiry → Route to **SUPPORT** (Better for ambiguous help requests)
+**Examples**:
+- "Show me hoodies" → **SALES** (product search)
+- "What colors do you have in hoodies?" → **SALES** (product availability)
+- "I received a damaged item" → **SUPPORT** (complaint)
+- "Where is my order?" → **SUPPORT** (tracking)
+- "عايز بنطلون" (I want pants) → **SALES** (product request)
 
-**Decision Logic**:
-1. Check for complaints/problems/issues → SUPPORT
-2. Check for order tracking/modifications → SUPPORT
-3. Check for pure policy questions (no products) → SUPPORT
-4. Check for product searches/purchases → SALES
-5. If completely unclear → SUPPORT (safer default)
-
-**Your Decision**:
-Respond with ONLY one word: "sales" or "support"
+**Decision**: Respond with ONLY one word: "sales" or "support"
 """
 
     try:

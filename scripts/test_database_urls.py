@@ -9,8 +9,8 @@ from sqlalchemy import text
 
 # Your project info
 PROJECT_REF = "evugisirvhbpfdhcztbk"
-PASSWORD = "8368@flowinit"  # Will be URL-encoded
-PASSWORD_ENCODED = "8368%40flowinit"
+PASSWORD = "8368@zaylon"  # Will be URL-encoded
+PASSWORD_ENCODED = "8368%40zaylon"
 
 # Common regions to try
 REGIONS = ["us-east-1", "us-west-1", "eu-west-1", "ap-southeast-1"]

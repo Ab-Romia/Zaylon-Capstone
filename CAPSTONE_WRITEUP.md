@@ -1,4 +1,4 @@
-# Flowinit: Hierarchical Multi-Agent E-commerce Assistant
+# Zaylon: Hierarchical Multi-Agent E-commerce Assistant
 ## AI Engineering Bootcamp Capstone Project
 
 **Submitted by**: Abdelrahman Romia
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-**Flowinit** is a production-ready, hierarchical multi-agent system built with LangGraph that transforms e-commerce customer service automation. Unlike traditional single-LLM chatbots, Flowinit uses a **Supervisor Agent** that intelligently routes customer queries to specialized sub-agents (Sales & Support), each equipped with domain-specific tools and backed by a long-term Memory Bank.
+**Zaylon** is a production-ready, hierarchical multi-agent system built with LangGraph that transforms e-commerce customer service automation. Unlike traditional single-LLM chatbots, Zaylon uses a **Supervisor Agent** that intelligently routes customer queries to specialized sub-agents (Sales & Support), each equipped with domain-specific tools and backed by a long-term Memory Bank.
 
 ### Key Innovation
 
@@ -56,7 +56,7 @@ E-commerce businesses using Instagram/WhatsApp for customer service face several
 
 ---
 
-## Solution: Flowinit Agentic System
+## Solution: Zaylon Agentic System
 
 ### Architecture Overview
 
@@ -233,7 +233,7 @@ python tests/evaluation/run_eval.py
 
 ### Quantified Benefits
 
-| Metric | Before (Traditional) | After (Flowinit) | Improvement |
+| Metric | Before (Traditional) | After (Zaylon) | Improvement |
 |--------|---------------------|------------------|-------------|
 | **Intent Recognition** | 65% | 90% | +38% |
 | **Mixed Intent Handling** | 30% | 85% | +183% |
@@ -245,7 +245,7 @@ python tests/evaluation/run_eval.py
 
 ### Cost Savings Breakdown
 
-**How Flowinit reduces costs by 67%**:
+**How Zaylon reduces costs by 67%**:
 
 1. **Smart Caching** (30% savings):
    - Common queries (greetings, thanks) served from cache
@@ -263,7 +263,7 @@ python tests/evaluation/run_eval.py
 
 **Monthly Cost Example** (1000 conversations/day):
 - Traditional bot: **$4,500/month**
-- Flowinit: **$1,485/month**
+- Zaylon: **$1,485/month**
 - **Savings: $3,015/month ($36,180/year)**
 
 ### Operational Benefits
@@ -291,7 +291,7 @@ python tests/evaluation/run_eval.py
 
 ### vs. Traditional Chatbots
 
-| Feature | Traditional Bot | Flowinit |
+| Feature | Traditional Bot | Zaylon |
 |---------|----------------|----------|
 | Architecture | Single LLM | Hierarchical multi-agent |
 | Specialization | Generalist | Domain specialists |
@@ -307,19 +307,19 @@ python tests/evaluation/run_eval.py
 - ❌ No agent specialization
 - ❌ Expensive ($50-200/agent/month)
 - ❌ Limited customization
-- ✅ **Flowinit**: Open source, self-hosted, fully customizable
+- ✅ **Zaylon**: Open source, self-hosted, fully customizable
 
 **Custom GPT Wrappers**:
 - ❌ Single-agent architecture
 - ❌ No long-term memory
 - ❌ Poor observability
-- ✅ **Flowinit**: Multi-agent, Memory Bank, full CoT logging
+- ✅ **Zaylon**: Multi-agent, Memory Bank, full CoT logging
 
 **Voiceflow/Botpress**:
 - ❌ Rule-based, not agentic
 - ❌ No LangGraph orchestration
 - ❌ Limited tool integration
-- ✅ **Flowinit**: Full agentic capabilities with LangGraph
+- ✅ **Zaylon**: Full agentic capabilities with LangGraph
 
 ---
 
@@ -383,7 +383,7 @@ python tests/evaluation/run_eval.py
 ### Phase 2: Agentic Core (Week 2)
 
 **Deliverables**:
-- `FlowinitState` schema (TypedDict)
+- `ZaylonState` schema (TypedDict)
 - 5 agent nodes: load_memory, supervisor, sales, support, save_memory
 - LangGraph workflow assembly
 - Test suite (5 test cases)
@@ -548,7 +548,7 @@ LANGSMITH_API_KEY=ls__...
 
 ## Conclusion
 
-**Flowinit demonstrates that agentic AI systems can deliver measurable business value** in real-world e-commerce applications. By implementing:
+**Zaylon demonstrates that agentic AI systems can deliver measurable business value** in real-world e-commerce applications. By implementing:
 
 1. **Hierarchical multi-agent architecture** for specialization
 2. **10 LangChain tools** for external data integration
@@ -586,7 +586,7 @@ AI_Microservices/
 ### Key Files
 
 - **README.md**: Complete setup and usage guide
-- **FLOWINIT_TRANSFORMATION.md**: Detailed implementation log
+- **ZAYLON_TRANSFORMATION.md**: Detailed implementation log
 - **EVALUATION_REPORT.md**: LLM-as-a-judge results
 - **tests/evaluation/golden_dataset.csv**: 30 test cases
 - **tests/evaluation/run_eval.py**: Evaluation runner

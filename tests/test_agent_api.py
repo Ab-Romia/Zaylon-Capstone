@@ -1,5 +1,5 @@
 """
-Test script for the Flowinit v2 Agent API.
+Test script for the Zaylon v2 Agent API.
 Tests the /api/v2/agent/invoke endpoint.
 """
 
@@ -227,7 +227,7 @@ async def test_streaming():
 async def main():
     """Run all tests."""
     print("\n" + "=" * 80)
-    print("FLOWINIT V2 AGENT API TESTS")
+    print("ZAYLON V2 AGENT API TESTS")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
 
@@ -249,7 +249,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    print("\nStarting Flowinit v2 API tests...")
+    print("\nStarting Zaylon v2 API tests...")
     print("Make sure the server is running on http://localhost:8000")
     print("Press Ctrl+C to cancel\n")
 

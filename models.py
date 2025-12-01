@@ -405,7 +405,7 @@ class PrepareContextEnhancedResponse(BaseModel):
 
 
 # ============================================================================
-# Agentic System Models (Flowinit v2 API)
+# Agentic System Models (Zaylon v2 API)
 # ============================================================================
 
 class AgentInvokeRequest(BaseModel):

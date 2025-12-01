@@ -62,15 +62,22 @@ class EmbeddingService:
         logger.info(f"Embedding service initialized with provider: {self._provider}")
 
     def _init_openai(self) -> bool:
-        """Initialize OpenAI client. Returns True if successful."""
+        """Initialize OpenAI client with proper timeout configuration. Returns True if successful."""
         try:
             from openai import AsyncOpenAI
+            import httpx
             if self.settings.openai_api_key:
-                self._openai_client = AsyncOpenAI(api_key=self.settings.openai_api_key)
-                logger.info("OpenAI embeddings initialized")
+                # Configure timeout to 60 seconds to prevent aggressive retries
+                # This reduces latency issues caused by premature timeouts
+                self._openai_client = AsyncOpenAI(
+                    api_key=self.settings.openai_api_key,
+                    timeout=httpx.Timeout(60.0, connect=10.0),  # 60s total, 10s connect
+                    max_retries=2  # Limit retries to prevent compounding latency
+                )
+                logger.info("OpenAI embeddings initialized with 60s timeout")
                 return True
         except Exception as e:
-            logger.debug(f"OpenAI initialization failed: {e}")
+            logger.error(f"OpenAI initialization failed: {e}")
         return False
 
     def _init_gemini(self) -> bool:
@@ -146,7 +153,7 @@ class EmbeddingService:
             return self._embed_local_batch(valid_texts)
 
     async def _embed_openai(self, text: str) -> List[float]:
-        """Generate embedding using OpenAI API."""
+        """Generate embedding using OpenAI API. NO FALLBACK - fails if OpenAI unavailable."""
         try:
             response = await self._openai_client.embeddings.create(
                 model=self.settings.embedding_model,
@@ -156,14 +163,11 @@ class EmbeddingService:
             logger.debug(f"Generated OpenAI embedding, dimension: {len(embedding)}")
             return embedding
         except Exception as e:
-            logger.error(f"OpenAI embedding failed: {e}, falling back to local model")
-            # Fallback to local model
-            if not self._local_model:
-                self._init_local_model()
-            return self._embed_local(text)
+            logger.error(f"OpenAI embedding failed: {e}")
+            raise  # No fallback - fail explicitly
 
     async def _embed_openai_batch(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for batch using OpenAI API."""
+        """Generate embeddings for batch using OpenAI API. NO FALLBACK - fails if OpenAI unavailable."""
         try:
             response = await self._openai_client.embeddings.create(
                 model=self.settings.embedding_model,
@@ -173,14 +177,11 @@ class EmbeddingService:
             logger.debug(f"Generated {len(embeddings)} OpenAI embeddings")
             return embeddings
         except Exception as e:
-            logger.error(f"OpenAI batch embedding failed: {e}, falling back to local model")
-            # Fallback to local model
-            if not self._local_model:
-                self._init_local_model()
-            return self._embed_local_batch(texts)
+            logger.error(f"OpenAI batch embedding failed: {e}")
+            raise  # No fallback - fail explicitly
 
     async def _embed_gemini(self, text: str) -> List[float]:
-        """Generate embedding using Gemini API."""
+        """Generate embedding using Gemini API. NO FALLBACK - fails if Gemini unavailable."""
         try:
             result = self._gemini_client.embed_content(
                 model=self.settings.gemini_embedding_model,
@@ -191,14 +192,11 @@ class EmbeddingService:
             logger.debug(f"Generated Gemini embedding, dimension: {len(embedding)}")
             return embedding
         except Exception as e:
-            logger.error(f"Gemini embedding failed: {e}, falling back to local model")
-            # Fallback to local model
-            if not self._local_model:
-                self._init_local_model()
-            return self._embed_local(text)
+            logger.error(f"Gemini embedding failed: {e}")
+            raise  # No fallback - fail explicitly
 
     async def _embed_gemini_batch(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for batch using Gemini API."""
+        """Generate embeddings for batch using Gemini API. NO FALLBACK - fails if Gemini unavailable."""
         try:
             # Gemini doesn't have native batch API, so we'll call individually
             # This is less efficient but works
@@ -213,11 +211,8 @@ class EmbeddingService:
             logger.debug(f"Generated {len(embeddings)} Gemini embeddings")
             return embeddings
         except Exception as e:
-            logger.error(f"Gemini batch embedding failed: {e}, falling back to local model")
-            # Fallback to local model
-            if not self._local_model:
-                self._init_local_model()
-            return self._embed_local_batch(texts)
+            logger.error(f"Gemini batch embedding failed: {e}")
+            raise  # No fallback - fail explicitly
 
     def _embed_local(self, text: str) -> List[float]:
         """Generate embedding using local Sentence Transformer."""

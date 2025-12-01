@@ -1,5 +1,5 @@
 """
-Flowinit Agent Evaluation Suite
+Zaylon Agent Evaluation Suite
 Uses LLM-as-a-Judge to evaluate agent performance against golden dataset.
 """
 
@@ -78,7 +78,12 @@ def init_judge_provider():
         if OPENAI_API_KEY:
             try:
                 from openai import AsyncOpenAI
-                judge_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+                import httpx
+                judge_client = AsyncOpenAI(
+                    api_key=OPENAI_API_KEY,
+                    timeout=httpx.Timeout(120.0, connect=10.0),
+                    max_retries=2
+                )
                 judge_model = "gpt-4o"
                 JUDGE_PROVIDER = "openai"
                 print(f"✓ Using OpenAI ({judge_model}) as LLM judge")
@@ -105,7 +110,12 @@ def init_judge_provider():
     if OPENAI_API_KEY:
         try:
             from openai import AsyncOpenAI
-            judge_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+            import httpx
+            judge_client = AsyncOpenAI(
+                api_key=OPENAI_API_KEY,
+                timeout=httpx.Timeout(120.0, connect=10.0),
+                max_retries=2
+            )
             judge_model = "gpt-4o"
             JUDGE_PROVIDER = "openai"
             print(f"✓ Auto-detected OpenAI API key, using {judge_model} as LLM judge")
@@ -396,7 +406,7 @@ async def evaluate_single_case(
 async def run_evaluation():
     """Run the full evaluation suite."""
     print("\n" + "="*80)
-    print("FLOWINIT AGENT EVALUATION SUITE")
+    print("ZAYLON AGENT EVALUATION SUITE")
     print("="*80)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"API Base URL: {BASE_URL}")
@@ -487,7 +497,7 @@ async def generate_report(metrics: Dict[str, Any], results_df: pd.DataFrame):
     """Generate the evaluation report in Markdown."""
     report_path = Path(__file__).parent.parent.parent / "EVALUATION_REPORT.md"
 
-    report = f"""# Flowinit Agent Evaluation Report
+    report = f"""# Zaylon Agent Evaluation Report
 
 **Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 **Evaluation Method**: LLM-as-a-Judge ({judge_model})
@@ -498,7 +508,7 @@ async def generate_report(metrics: Dict[str, Any], results_df: pd.DataFrame):
 
 ## Executive Summary
 
-The Flowinit multi-agent system was evaluated against a golden dataset of 30 realistic customer interactions covering:
+The Zaylon multi-agent system was evaluated against a golden dataset of 30 realistic customer interactions covering:
 - **Sales scenarios** (product search, purchases, orders)
 - **Support scenarios** (FAQs, order tracking, complaints)
 - **Mixed intent** (combined sales + support needs)
@@ -634,7 +644,7 @@ These scenarios had lower success rates:
 
 ## Conclusion
 
-The Flowinit multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **{metrics['avg_overall_success']:.1%}**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
+The Zaylon multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **{metrics['avg_overall_success']:.1%}**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
 
 - ✅ Effective routing and specialization
 - ✅ Proper tool usage and integration
@@ -674,7 +684,7 @@ The system is **production-ready** for deployment in an e-commerce customer serv
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Flowinit Agent Evaluation...")
+    print("\n🚀 Starting Zaylon Agent Evaluation...")
     print("⚠️  Make sure the API server is running on http://localhost:8000")
 
     if JUDGE_PROVIDER == "gemini":

@@ -1,5 +1,5 @@
 """
-Flowinit Tests Package
+Zaylon Tests Package
 Contains test suites for the agentic system.
 """
 

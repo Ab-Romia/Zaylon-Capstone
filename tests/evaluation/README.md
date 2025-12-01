@@ -1,6 +1,6 @@
 # Agent Evaluation Guide
 
-This evaluation suite tests the Flowinit agent system against a golden dataset of 30 realistic customer interactions.
+This evaluation suite tests the Zaylon agent system against a golden dataset of 30 realistic customer interactions.
 
 ---
 
@@ -118,7 +118,7 @@ python run_eval.py
 
 ```
 ================================================================================
-FLOWINIT AGENT EVALUATION SUITE
+ZAYLON AGENT EVALUATION SUITE
 ================================================================================
 Started: 2025-11-27 20:00:00
 API Base URL: http://localhost:8000
