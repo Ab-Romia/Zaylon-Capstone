@@ -33,7 +33,7 @@ class RAGService:
         query: str,
         db: AsyncSession,
         limit: int = 5,
-        min_score: float = 0.7
+        min_score: float = 0.5
     ) -> List[Dict[str, Any]]:
         """
         Semantic product search using vector similarity.

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services import products
 from database import async_session, Product
 from sqlalchemy import select
+from app.utils.size_conversion import match_size_with_variants, get_equivalent_sizes
 
 
 @tool
@@ -133,10 +134,13 @@ async def check_product_availability_tool(product_name: str, size: Optional[str]
             # Check each product for availability
             available_products = []
             for product in result.products:
-                # Check size availability
+                # Check size availability with conversion support
                 size_available = True
+                matched_size = None
                 if size:
-                    size_available = size.lower() in [s.lower() for s in (product.sizes or [])]
+                    # Try to match size considering EU/US/UK conversions
+                    matched_size = match_size_with_variants(size, product.sizes or [])
+                    size_available = matched_size is not None
 
                 # Check color availability
                 color_available = True
@@ -144,14 +148,19 @@ async def check_product_availability_tool(product_name: str, size: Optional[str]
                     color_available = color.lower() in [c.lower() for c in (product.colors or [])]
 
                 if size_available and color_available and product.stock_count > 0:
-                    available_products.append({
+                    product_info = {
                         "id": product.id,
                         "name": product.name,
                         "price": product.price,
                         "stock_count": product.stock_count,
                         "available_sizes": product.sizes,
                         "available_colors": product.colors
-                    })
+                    }
+                    # Add size conversion info if applicable
+                    if size and matched_size:
+                        product_info["size_match"] = matched_size
+                        product_info["size_equivalents"] = get_equivalent_sizes(size)
+                    available_products.append(product_info)
 
             return json.dumps({
                 "success": True,

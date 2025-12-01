@@ -406,6 +406,12 @@ async def sales_agent_node(state: ZaylonState) -> Dict[str, Any]:
 **When customer asks about policies** → call search_knowledge_base_tool:
 - "What's your return policy?" → call search_knowledge_base_tool(query="return policy")
 
+**SIZE CONVERSION SUPPORT**:
+The system automatically handles EU/US/UK size conversions for shoes. Examples:
+- Customer asks for "EU size 47" → System finds matching "US 13" or "UK 12"
+- Customer asks for "size 12" → System finds matching "EU 46" or "UK 11"
+You don't need to do manual conversions - just use check_product_availability_tool with the size the customer mentioned.
+
 **CRITICAL - ORDER PLACEMENT WORKFLOW (MUST FOLLOW EXACTLY)**:
 
 **Step 1: Customer Expresses Intent to Buy**
@@ -498,7 +504,7 @@ You work for Zaylon. Be professional. Use tools. Confirm only what tools confirm
         logger.info(f"[SALES AGENT] Invoking with {len(agent_messages)} messages")
         logger.info(f"[SALES AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
 
-        # First attempt - ask nicely
+        # Invoke agent - let it decide whether to use tools
         response = await sales_agent.ainvoke(agent_messages)
 
         # Check if tools were called - robust checking using helper function
@@ -507,27 +513,7 @@ You work for Zaylon. Be professional. Use tools. Confirm only what tools confirm
 
         logger.info(f"[SALES AGENT] Response type: {type(response)}")
         logger.info(f"[SALES AGENT] Tool calls found: {len(tool_calls_list)}")
-        logger.info(f"[SALES AGENT] Tool calls: {tool_calls_list[:100] if tool_calls_list else 'None'}")
-        logger.info(f"[SALES AGENT] Tools called on first attempt: {tools_called}")
-
-        # If NO tools called, force a retry with stronger prompting
-        if not tools_called:
-            logger.warning("[SALES AGENT] No tools called - forcing retry with stronger prompt")
-
-            # CRITICAL: Do NOT append the first response to avoid OpenAI 400 errors
-            # The response without tool calls is useless anyway, and may have internal
-            # state that causes "tool_calls must be followed by tool messages" errors
-
-            # Add a strong forcing message directly
-            agent_messages.append(HumanMessage(
-                content="STOP. You MUST call a tool before responding. Call search_products_tool, check_product_availability_tool, create_order_tool, get_order_history_tool, or check_order_status_tool now. Do NOT respond with text - call a tool first."
-            ))
-
-            # Retry
-            response = await sales_agent.ainvoke(agent_messages)
-            tool_calls_list = get_tool_calls(response)
-            tools_called = len(tool_calls_list) > 0
-            logger.info(f"[SALES AGENT] Tools called on second attempt: {tools_called}")
+        logger.info(f"[SALES AGENT] Tools called: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -600,40 +586,14 @@ You work for Zaylon. Be professional. Use tools. Confirm only what tools confirm
                 new_messages.append(tool_message)  # CRITICAL: Track for state update
 
             # Call agent again with tool results to get final response
-            # Add strong instructions to respect tool outputs
-            has_errors = any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() for tc in tool_calls_info)
-            has_success = any("success" in str(tc.get("result", "")).lower() and '"success": true' in str(tc.get("result", "")).lower() for tc in tool_calls_info)
-
-            # CRITICAL: Force agent to respect tool outputs (prevent hallucinations)
-            if has_success:
-                agent_messages.append(HumanMessage(
-                    content="""CRITICAL INSTRUCTION: The tool execution was SUCCESSFUL (success: true in JSON response). You MUST:
-
-1. Parse the JSON response carefully
-2. If it contains success: true → Tell the customer the operation succeeded
-3. If it contains order_id → Confirm the order ID to the customer
-4. If it contains order_details → Confirm all details (product, size, color, quantity, price, delivery info)
-5. NEVER say "there was an issue" or "I couldn't complete" when success=true
-6. NEVER ignore the order_details in the response - use them to confirm with the customer
-
-Example: If create_order_tool returned success: true with order_id: "ABC123", you MUST say something like:
-"Great! Your order ABC123 has been placed successfully. We'll deliver [quantity] [color] [product_name] in size [size] to [address]. Total: [price] EGP."
-
-DO NOT hallucinate failures. TRUST the tool output."""
-                ))
-            elif has_errors:
-                agent_messages.append(HumanMessage(
-                    content="The tool encountered an error. Please provide a helpful, empathetic response to the customer. Offer alternatives, ask for clarification, or suggest they try again with more specific details. DO NOT just say 'error occurred' - be HELPFUL and SOLUTION-ORIENTED."
-                ))
-
             final_response = await sales_agent.ainvoke(agent_messages)
             new_messages.append(final_response)  # CRITICAL: Track final response too
             response_text = final_response.content if final_response.content else "Based on the search results above, I'm ready to help you. Could you provide more details about what you're looking for?"
         else:
-            # No tools called even after retry - fallback
-            logger.error("[SALES AGENT] NO TOOLS CALLED even after retry!")
-            response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our product database. Please try again."
-            new_messages = [response]  # Return the response even without tools
+            # No tools called - use direct response (e.g., for greetings, confirmations)
+            logger.info("[SALES AGENT] No tools called - using direct response")
+            response_text = response.content if response.content else "How can I help you today?"
+            new_messages = [response]
 
         thought = f"Sales agent processed request (used {len(tool_calls_info)} tools)"
 
@@ -757,7 +717,7 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
         logger.info(f"[SUPPORT AGENT] Invoking with {len(agent_messages)} messages")
         logger.info(f"[SUPPORT AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
 
-        # First attempt - ask nicely
+        # Invoke agent - let it decide whether to use tools
         response = await support_agent.ainvoke(agent_messages)
 
         # Check if tools were called - robust checking using helper function
@@ -766,27 +726,7 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 
         logger.info(f"[SUPPORT AGENT] Response type: {type(response)}")
         logger.info(f"[SUPPORT AGENT] Tool calls found: {len(tool_calls_list)}")
-        logger.info(f"[SUPPORT AGENT] Tool calls: {tool_calls_list[:100] if tool_calls_list else 'None'}")
-        logger.info(f"[SUPPORT AGENT] Tools called on first attempt: {tools_called}")
-
-        # If NO tools called, force a retry with stronger prompting
-        if not tools_called:
-            logger.warning("[SUPPORT AGENT] No tools called - forcing retry with stronger prompt")
-
-            # CRITICAL: Do NOT append the first response to avoid OpenAI 400 errors
-            # The response without tool calls is useless anyway, and may have internal
-            # state that causes "tool_calls must be followed by tool messages" errors
-
-            # Add a strong forcing message directly
-            agent_messages.append(HumanMessage(
-                content="STOP. You MUST call a tool before responding. Call search_knowledge_base_tool, get_order_history_tool, check_order_status_tool, or semantic_product_search_tool now. Do NOT respond with text - call a tool first."
-            ))
-
-            # Retry
-            response = await support_agent.ainvoke(agent_messages)
-            tool_calls_list = get_tool_calls(response)
-            tools_called = len(tool_calls_list) > 0
-            logger.info(f"[SUPPORT AGENT] Tools called on second attempt: {tools_called}")
+        logger.info(f"[SUPPORT AGENT] Tools called: {tools_called}")
 
         # Execute tools if requested
         tool_calls_info = []
@@ -859,37 +799,14 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 new_messages.append(tool_message)  # CRITICAL: Track for state update
 
             # Call agent again with tool results to get final response
-            # Add strong instructions to respect tool outputs
-            has_errors = any("failed" in str(tc.get("result", "")).lower() or "error" in str(tc.get("result", "")).lower() or "not found" in str(tc.get("result", "")).lower() for tc in tool_calls_info)
-            has_success = any("success" in str(tc.get("result", "")).lower() and '"success": true' in str(tc.get("result", "")).lower() for tc in tool_calls_info)
-
-            # CRITICAL: Force agent to respect tool outputs (prevent hallucinations)
-            if has_success:
-                agent_messages.append(HumanMessage(
-                    content="""CRITICAL INSTRUCTION: The tool execution was SUCCESSFUL (success: true in JSON response). You MUST:
-
-1. Parse the JSON response carefully
-2. If it contains success: true → Tell the customer the operation succeeded
-3. If it contains order information → Provide the order details to the customer
-4. If it contains policy/FAQ information → Share that information clearly
-5. NEVER say "I couldn't find" or "there was an issue" when success=true
-6. NEVER ignore successful results - use them to help the customer
-
-DO NOT hallucinate failures. TRUST the tool output."""
-                ))
-            elif has_errors:
-                agent_messages.append(HumanMessage(
-                    content="The tool didn't find the information or encountered an error. Please provide a helpful, empathetic response to the customer. Acknowledge the issue, offer alternatives, suggest contacting support, or ask for more details. DO NOT just say 'no information found' - be HELPFUL and provide NEXT STEPS."
-                ))
-
             final_response = await support_agent.ainvoke(agent_messages)
             new_messages.append(final_response)  # CRITICAL: Track final response too
             response_text = final_response.content if final_response.content else "Based on the information I found, how can I assist you further?"
         else:
-            # No tools called even after retry - fallback
-            logger.error("[SUPPORT AGENT] NO TOOLS CALLED even after retry!")
-            response_text = response.content if response.content else "I apologize, but I'm having trouble accessing our support systems. Please try again or contact our support team directly."
-            new_messages = [response]  # Return the response even without tools
+            # No tools called - use direct response (e.g., for greetings, acknowledgments)
+            logger.info("[SUPPORT AGENT] No tools called - using direct response")
+            response_text = response.content if response.content else "How can I help you today?"
+            new_messages = [response]
 
         thought = f"Support agent processed request (used {len(tool_calls_info)} tools)"
 
