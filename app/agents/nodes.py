@@ -73,6 +73,79 @@ def get_tool_calls(response):
     return []
 
 
+def sanitize_message_history(messages: List[BaseMessage]) -> List[BaseMessage]:
+    """
+    Sanitize message history to ensure all tool_calls have corresponding tool responses.
+
+    This prevents OpenAI API errors when an AIMessage with tool_calls is not followed
+    by the required ToolMessages.
+
+    Args:
+        messages: List of conversation messages
+
+    Returns:
+        Cleaned list of messages with proper tool_call/response pairing
+    """
+    from langchain_core.messages import ToolMessage
+
+    # Track which tool_call_ids have responses
+    tool_call_ids_with_responses = set()
+
+    # First pass: collect all tool_call_ids that have responses
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_call_ids_with_responses.add(msg.tool_call_id)
+
+    # Second pass: clean messages
+    cleaned_messages = []
+    for msg in messages:
+        # Check if this is an AIMessage with tool_calls
+        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+            # Filter out tool_calls that don't have responses
+            valid_tool_calls = []
+            orphaned_tool_calls = []
+
+            for tc in msg.tool_calls:
+                tc_id = tc.get('id') if isinstance(tc, dict) else getattr(tc, 'id', None)
+                if tc_id and tc_id in tool_call_ids_with_responses:
+                    valid_tool_calls.append(tc)
+                else:
+                    orphaned_tool_calls.append(tc_id)
+
+            if orphaned_tool_calls:
+                logger.warning(f"[MESSAGE_SANITIZER] Found {len(orphaned_tool_calls)} orphaned tool_calls: {orphaned_tool_calls}")
+
+            # If all tool_calls are orphaned, create a new message without tool_calls
+            if not valid_tool_calls and msg.tool_calls:
+                # Create a new AIMessage without tool_calls
+                from langchain_core.messages import AIMessage
+                cleaned_msg = AIMessage(
+                    content=msg.content if msg.content else "Continuing with the conversation...",
+                    id=msg.id if hasattr(msg, 'id') else None
+                )
+                cleaned_messages.append(cleaned_msg)
+                logger.info(f"[MESSAGE_SANITIZER] Removed all orphaned tool_calls from AIMessage")
+            elif valid_tool_calls != msg.tool_calls:
+                # Some tool_calls are valid, create new message with only valid ones
+                from langchain_core.messages import AIMessage
+                cleaned_msg = AIMessage(
+                    content=msg.content,
+                    tool_calls=valid_tool_calls,
+                    id=msg.id if hasattr(msg, 'id') else None
+                )
+                cleaned_messages.append(cleaned_msg)
+                logger.info(f"[MESSAGE_SANITIZER] Kept {len(valid_tool_calls)}/{len(msg.tool_calls)} tool_calls")
+            else:
+                # All tool_calls are valid
+                cleaned_messages.append(msg)
+        else:
+            # Not an AIMessage with tool_calls, keep as-is
+            cleaned_messages.append(msg)
+
+    logger.info(f"[MESSAGE_SANITIZER] Processed {len(messages)} messages, output {len(cleaned_messages)} messages")
+    return cleaned_messages
+
+
 # ============================================================================
 # Memory Nodes
 # ============================================================================
@@ -498,11 +571,14 @@ You work for Zaylon. Be professional. Use tools. Confirm only what tools confirm
         # Create agent with tools - simple binding without forcing
         sales_agent = llm_base.bind_tools(SALES_TOOLS)
 
-        # Build agent messages
-        agent_messages = [SystemMessage(content=system_message)] + messages
+        # Sanitize message history to ensure tool_calls have corresponding responses
+        sanitized_messages = sanitize_message_history(messages)
 
-        logger.info(f"[SALES AGENT] Invoking with {len(agent_messages)} messages")
-        logger.info(f"[SALES AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
+        # Build agent messages
+        agent_messages = [SystemMessage(content=system_message)] + sanitized_messages
+
+        logger.info(f"[SALES AGENT] Invoking with {len(agent_messages)} messages (sanitized from {len(messages) + 1})")
+        logger.info(f"[SALES AGENT] Last message: {sanitized_messages[-1].content[:100] if sanitized_messages else 'None'}")
 
         # Invoke agent - let it decide whether to use tools
         response = await sales_agent.ainvoke(agent_messages)
@@ -711,11 +787,14 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
         # Create agent with tools - simple binding without forcing
         support_agent = llm_base.bind_tools(SUPPORT_TOOLS)
 
-        # Build agent messages
-        agent_messages = [SystemMessage(content=system_message)] + messages
+        # Sanitize message history to ensure tool_calls have corresponding responses
+        sanitized_messages = sanitize_message_history(messages)
 
-        logger.info(f"[SUPPORT AGENT] Invoking with {len(agent_messages)} messages")
-        logger.info(f"[SUPPORT AGENT] Last message: {messages[-1].content[:100] if messages else 'None'}")
+        # Build agent messages
+        agent_messages = [SystemMessage(content=system_message)] + sanitized_messages
+
+        logger.info(f"[SUPPORT AGENT] Invoking with {len(agent_messages)} messages (sanitized from {len(messages) + 1})")
+        logger.info(f"[SUPPORT AGENT] Last message: {sanitized_messages[-1].content[:100] if sanitized_messages else 'None'}")
 
         # Invoke agent - let it decide whether to use tools
         response = await support_agent.ainvoke(agent_messages)
