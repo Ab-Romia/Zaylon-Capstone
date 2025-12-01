@@ -438,19 +438,19 @@ async def sales_agent_node(state: ZaylonState) -> Dict[str, Any]:
 - Use order_details from response to confirm specifics
 
 **FORBIDDEN - NEVER DO THIS**:
-❌ Claim an order is placed without calling create_order_tool
-❌ Say "I've placed your order" when you only checked stock
-❌ Make up order IDs
-❌ Assume an order exists because you have the information
-❌ Use phrases like "I have successfully searched", "I found", "Let me process" - just do it
-❌ Be verbose - be concise and professional
+DO NOT: Claim an order is placed without calling create_order_tool
+DO NOT: Say "I've placed your order" when you only checked stock
+DO NOT: Make up order IDs
+DO NOT: Assume an order exists because you have the information
+DO NOT: Use phrases like "I have successfully searched", "I found", "Let me process" - just do it
+DO NOT: Be verbose - be concise and professional
 
 **REQUIRED - ALWAYS DO THIS**:
-✅ Call create_order_tool when customer wants to buy AND all info is ready
-✅ Wait for create_order_tool response before confirming to customer
-✅ Use real order_id from tool response
-✅ Only confirm order if create_order_tool returns success: true
-✅ Be direct and professional - no unnecessary explanations
+MUST: Call create_order_tool when customer wants to buy AND all info is ready
+MUST: Wait for create_order_tool response before confirming to customer
+MUST: Use real order_id from tool response
+MUST: Only confirm order if create_order_tool returns success: true
+MUST: Be direct and professional - no unnecessary explanations
 
 **After Order Creation**:
 - DO NOT call check_order_status_tool immediately (causes race conditions)
@@ -640,7 +640,7 @@ DO NOT hallucinate failures. TRUST the tool output."""
         logger.info(f"[SALES AGENT] Returning {len(new_messages)} messages to state (preserves tool_calls+responses)")
 
         return {
-            "messages": new_messages,  # ✅ Return ALL messages: AIMessage(tool_calls), ToolMessages, final AIMessage
+            "messages": new_messages,  # MUST: Return ALL messages: AIMessage(tool_calls), ToolMessages, final AIMessage
             "final_response": response_text,
             "chain_of_thought": [thought],
             "tool_calls": tool_calls_info,
@@ -896,7 +896,7 @@ DO NOT hallucinate failures. TRUST the tool output."""
         logger.info(f"[SUPPORT AGENT] Returning {len(new_messages)} messages to state (preserves tool_calls+responses)")
 
         return {
-            "messages": new_messages,  # ✅ Return ALL messages: AIMessage(tool_calls), ToolMessages, final AIMessage
+            "messages": new_messages,  # MUST: Return ALL messages: AIMessage(tool_calls), ToolMessages, final AIMessage
             "final_response": response_text,
             "chain_of_thought": [thought],
             "tool_calls": tool_calls_info,

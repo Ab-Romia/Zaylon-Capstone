@@ -92,7 +92,7 @@ def main():
     print()
 
     if not is_pooler:
-        print("[WARNING]️  WARNING: This is NOT a pooler connection!")
+        print("[WARNING]  WARNING: This is NOT a pooler connection!")
         print("   For Render, you should use the Connection Pooler endpoint.")
         print("   Go to Supabase → Settings → Database → Connection Pooling")
         print()
@@ -116,7 +116,7 @@ def main():
         print("   - Port 6543 (pooler) instead of 5432 (direct)")
         print("   - Better performance and IPv4 compatibility")
     else:
-        print("[WARNING]️  Using Direct Connection")
+        print("[WARNING]  Using Direct Connection")
         print("   - May have IPv6 issues on Render")
         print("   - Recommend switching to Connection Pooler")
 

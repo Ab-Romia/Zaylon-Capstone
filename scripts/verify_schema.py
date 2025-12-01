@@ -155,7 +155,7 @@ async def verify_schema():
             return_code = 1
 
         if warnings:
-            print(f"\n[WARNING]️  {len(warnings)} WARNING(S):\n")
+            print(f"\n[WARNING]  {len(warnings)} WARNING(S):\n")
             for i, warning in enumerate(warnings, 1):
                 print(f"   {i}. {warning}")
             if not errors:

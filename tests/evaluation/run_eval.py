@@ -525,7 +525,7 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 | Avg Execution Time | {metrics['avg_execution_time_ms']:.0f}ms |
 | Tests ≥80% Success | {metrics['success_rate_80_plus']:.1%} |
 
-**Result**: {'[OK] **EXCEEDS TARGET** (>80%)' if metrics['avg_overall_success'] >= 0.80 else '[OK] **MEETS TARGET** (>70%)' if metrics['avg_overall_success'] >= 0.70 else '[WARNING]️ **BELOW TARGET** (<70%)'}
+**Result**: {'[OK] **EXCEEDS TARGET** (>80%)' if metrics['avg_overall_success'] >= 0.80 else '[OK] **MEETS TARGET** (>70%)' if metrics['avg_overall_success'] >= 0.70 else '[WARNING] **BELOW TARGET** (<70%)'}
 
 ---
 
@@ -684,7 +684,7 @@ The system is **production-ready** for deployment in an e-commerce customer serv
 
 if __name__ == "__main__":
     print("\n Starting Zaylon Agent Evaluation...")
-    print("[WARNING]️  Make sure the API server is running on http://localhost:8000")
+    print("[WARNING]  Make sure the API server is running on http://localhost:8000")
 
     if JUDGE_PROVIDER == "gemini":
         print("[WARNING] Using Gemini as judge - make sure GEMINI_API_KEY is set")

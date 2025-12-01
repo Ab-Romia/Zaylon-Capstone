@@ -173,7 +173,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(test_all())
     except KeyboardInterrupt:
-        print("\n\n[WARNING]️  Testing interrupted by user")
+        print("\n\n[WARNING]  Testing interrupted by user")
     except Exception as e:
         print(f"\n\n[ERROR] Error running tests: {e}")
         import traceback

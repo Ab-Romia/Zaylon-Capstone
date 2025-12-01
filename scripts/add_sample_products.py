@@ -243,7 +243,7 @@ async def add_sample_products():
 
 async def clear_all_products():
     """Remove all products from database (use with caution!)"""
-    print("[WARNING]️  WARNING: This will delete ALL products from the database!")
+    print("[WARNING]  WARNING: This will delete ALL products from the database!")
     response = input("Are you sure? Type 'yes' to confirm: ")
 
     if response.lower() != 'yes':
