@@ -446,8 +446,22 @@ class AgentInvokeResponse(BaseModel):
 
 class AgentStreamChunk(BaseModel):
     """Streaming response chunk for agent invocation."""
-    type: str = Field(..., description="Chunk type: 'thought', 'tool_call', 'response', 'final'")
+    type: str = Field(..., description="Chunk type: 'log', 'thinking', 'tool_call', 'tool_result', 'agent_processing', 'response', 'final_response'")
     content: Optional[str] = None
     node: Optional[str] = None
     tool_name: Optional[str] = None
+    tool_args: Optional[Dict[str, Any]] = None
+    tool_result: Optional[str] = None
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    execution_time_ms: Optional[int] = None
     done: bool = False
+
+    # Final response fields (only present when type='final_response')
+    success: Optional[bool] = None
+    response: Optional[str] = None
+    agent_used: Optional[str] = None
+    chain_of_thought: Optional[List[AgentThought]] = None
+    tool_calls: Optional[List[AgentToolCall]] = None
+    user_profile: Optional[Dict[str, Any]] = None
+    thread_id: Optional[str] = None
+    error: Optional[str] = None
