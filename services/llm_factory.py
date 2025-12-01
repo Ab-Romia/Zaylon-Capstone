@@ -116,6 +116,7 @@ def _get_gemini_llm(use_mini: bool, temperature: float):
         model=model_name,
         temperature=temperature,
         google_api_key=settings.gemini_api_key,
-        max_retries=2,  # Limit retries to prevent compounding latency
-        timeout=60,  # Increased from 30s to prevent aggressive retry loops
+        convert_system_message_to_human=True,
+        max_retries=2,
+        timeout=60,
     )

@@ -483,7 +483,7 @@ curl -X GET https://your-n8n-instance.com/webhook/instagram-webhook
 
 ## Workflow Features
 
-### ✅ What the Workflow Does
+### [OK] What the Workflow Does
 
 1. **Receives Messages**
    - Instagram DMs via webhook
@@ -773,14 +773,14 @@ https://your-service.onrender.com/docs
 **Output:** Reply sent to customer via Instagram/WhatsApp
 
 **Key Features:**
-- ✅ Bilingual (Arabic/English)
-- ✅ Context-aware responses
-- ✅ Order creation & tracking
-- ✅ Response caching (saves tokens)
-- ✅ RAG-powered product search
-- ✅ Analytics logging
-- ✅ Multi-channel support
+- [OK] Bilingual (Arabic/English)
+- [OK] Context-aware responses
+- [OK] Order creation & tracking
+- [OK] Response caching (saves tokens)
+- [OK] RAG-powered product search
+- [OK] Analytics logging
+- [OK] Multi-channel support
 
 ---
 
-**Your AI assistant is now ready to handle customer messages automatically! 🚀**
+**Your AI assistant is now ready to handle customer messages automatically! **

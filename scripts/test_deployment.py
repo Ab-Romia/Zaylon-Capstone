@@ -27,7 +27,7 @@ def print_header(text):
 
 
 def print_test(name, status, message=""):
-    symbol = f"{GREEN}✓{RESET}" if status else f"{RED}✗{RESET}"
+    symbol = f"{GREEN}[OK]{RESET}" if status else f"{RED}[FAIL]{RESET}"
     print(f"{symbol} {name}")
     if message:
         print(f"  └─ {message}")
@@ -375,10 +375,10 @@ async def run_all_tests(test_api=False, base_url="http://localhost:8000"):
     print(f"\n{BLUE}{'='*60}{RESET}\n")
 
     if failed == 0:
-        print(f"{GREEN}✓ All tests passed! Ready for deployment.{RESET}\n")
+        print(f"{GREEN}[OK] All tests passed! Ready for deployment.{RESET}\n")
         return 0
     else:
-        print(f"{RED}✗ Some tests failed. Please fix issues before deployment.{RESET}\n")
+        print(f"{RED}[FAIL] Some tests failed. Please fix issues before deployment.{RESET}\n")
         return 1
 
 

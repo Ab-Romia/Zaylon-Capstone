@@ -2,7 +2,7 @@
 
 This directory contains the **multi-agent tool-calling workflow** for automating your AI-powered e-commerce customer service on Instagram and WhatsApp.
 
-## 🎯 Architecture: Multi-Agent Tool Calling
+##  Architecture: Multi-Agent Tool Calling
 
 Unlike traditional linear workflows, this implementation uses an **AI Agent** that autonomously decides which API endpoints to call based on the conversation context.
 
@@ -14,7 +14,7 @@ Unlike traditional linear workflows, this implementation uses an **AI Agent** th
 - **`MULTI_AGENT_ARCHITECTURE.md`** - Complete architecture documentation
 - **`N8N_WORKFLOW_SETUP_GUIDE.md`** - Setup guide
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Deploy Your API First
 
@@ -155,23 +155,23 @@ The AI agent has access to these tools (API endpoints):
 
 **Agent's Autonomous Actions:**
 ```
-1. ✅ Calls prepare_context
+1. [OK] Calls prepare_context
    → Gets customer history
    → Detects intent: "product_inquiry"
    → Returns relevant products from RAG
 
-2. ✅ Calls search_products
+2. [OK] Calls search_products
    → Searches for "red dress"
    → Gets 5 matching products
 
-3. ✅ Generates response:
+3. [OK] Generates response:
    "Yes! We have 3 beautiful red dresses in size M:
     1. Elegant Red Evening Dress - 299 EGP
     2. Casual Red Summer Dress - 199 EGP
     3. Formal Red Business Dress - 350 EGP
     Which one interests you? 😊"
 
-4. ✅ Calls store_interaction
+4. [OK] Calls store_interaction
    → Logs the interaction
    → Caches the response
    → Updates analytics
@@ -181,7 +181,7 @@ The AI agent has access to these tools (API endpoints):
 
 ---
 
-## 🎯 Benefits
+##  Benefits
 
 ### 1. **Intelligent Routing**
 - Agent decides which tools to use based on context
@@ -307,33 +307,33 @@ See full API documentation at: `https://your-api.com/docs`
 | Component | Linear Flow | Multi-Agent | Savings |
 |-----------|-------------|-------------|---------|
 | n8n Cloud | $20 or $0 | $20 or $0 | - |
-| OpenAI API | $15-25 | $10-18 | **✅ 35%** |
-| API Calls | Higher | Lower | **✅ 30%** |
-| **Total** | **$15-45** | **$10-38** | **✅ 25-30%** |
+| OpenAI API | $15-25 | $10-18 | **[OK] 35%** |
+| API Calls | Higher | Lower | **[OK] 30%** |
+| **Total** | **$15-45** | **$10-38** | **[OK] 25-30%** |
 
 ---
 
-## 🎯 Migration from Linear Flow
+##  Migration from Linear Flow
 
 If you're upgrading from the old linear workflow:
 
-1. ✅ **Backup current workflow** (already done: `n8n_workflow_linear_backup.json`)
-2. ✅ **Import new workflow** from `n8n_workflow.json`
-3. ✅ **Test with sample messages** to verify agent behavior
-4. ✅ **Monitor execution logs** for 24-48 hours
-5. ✅ **Tune system prompt** if needed for better decisions
+1. [OK] **Backup current workflow** (already done: `n8n_workflow_linear_backup.json`)
+2. [OK] **Import new workflow** from `n8n_workflow.json`
+3. [OK] **Test with sample messages** to verify agent behavior
+4. [OK] **Monitor execution logs** for 24-48 hours
+5. [OK] **Tune system prompt** if needed for better decisions
 
 **Migration Guide:** See `MULTI_AGENT_ARCHITECTURE.md` section "Migration Checklist"
 
 ---
 
-## 🚀 Next Steps
+##  Next Steps
 
-1. ✅ Deploy API to Render
-2. ✅ Import multi-agent workflow to n8n
-3. ✅ Configure environment variables
-4. ✅ Set up Instagram/WhatsApp webhooks
-5. ✅ Test with various conversation scenarios
+1. [OK] Deploy API to Render
+2. [OK] Import multi-agent workflow to n8n
+3. [OK] Configure environment variables
+4. [OK] Set up Instagram/WhatsApp webhooks
+5. [OK] Test with various conversation scenarios
 6. 📊 Monitor agent's tool-calling patterns
 7. 🔧 Optimize system prompt based on usage
 8. 📈 Scale as needed

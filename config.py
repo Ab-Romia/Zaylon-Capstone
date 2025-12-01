@@ -52,9 +52,9 @@ class Settings(BaseSettings):
     openai_chat_model_mini: str = "gpt-4o-mini"  # Supervisor/routing model
 
     # Gemini Settings
-    gemini_api_key: Optional[str] = None  # For Google Gemini
-    gemini_chat_model: str = "gemini-1.5-pro"  # Main agent model (supports 1M context, tool calling)
-    gemini_chat_model_mini: str = "gemini-1.5-flash"  # Faster, cheaper model for routing
+    gemini_api_key: Optional[str] = None
+    gemini_chat_model: str = "gemini-2.0-flash-exp"
+    gemini_chat_model_mini: str = "gemini-2.0-flash-exp"
 
     # Embeddings
     embedding_model: str = "text-embedding-3-small"  # OpenAI model

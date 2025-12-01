@@ -10,11 +10,11 @@ async def test_health():
         try:
             # This is exactly what the health endpoint does
             await db.execute(text("SELECT 1"))
-            print("✓ Health check query works!")
+            print("[OK] Health check query works!")
             print("Database: connected")
             return True
         except Exception as e:
-            print(f"✗ Health check query failed: {e}")
+            print(f"[FAIL] Health check query failed: {e}")
             print("Database: disconnected")
             return False
 

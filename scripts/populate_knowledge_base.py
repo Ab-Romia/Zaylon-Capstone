@@ -282,19 +282,19 @@ async def populate_knowledge_base():
 
             if success:
                 success_count += 1
-                logger.info(f"✓ Successfully indexed: {doc['doc_id']}")
+                logger.info(f"[OK] Successfully indexed: {doc['doc_id']}")
             else:
                 fail_count += 1
-                logger.error(f"✗ Failed to index: {doc['doc_id']}")
+                logger.error(f"[FAIL] Failed to index: {doc['doc_id']}")
         except Exception as e:
             fail_count += 1
-            logger.error(f"✗ Error indexing {doc['doc_id']}: {e}")
+            logger.error(f"[FAIL] Error indexing {doc['doc_id']}: {e}")
 
     logger.info(f"\n{'='*60}")
     logger.info(f"Knowledge Base Population Complete")
     logger.info(f"{'='*60}")
-    logger.info(f"✓ Successfully indexed: {success_count}")
-    logger.info(f"✗ Failed: {fail_count}")
+    logger.info(f"[OK] Successfully indexed: {success_count}")
+    logger.info(f"[FAIL] Failed: {fail_count}")
     logger.info(f"{'='*60}\n")
 
     return success_count, fail_count

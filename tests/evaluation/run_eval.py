@@ -23,9 +23,9 @@ try:
     env_path = Path(__file__).parent.parent.parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-        print(f"✓ Loaded environment variables from {env_path}")
+        print(f"[OK] Loaded environment variables from {env_path}")
 except ImportError:
-    print("⚠ python-dotenv not installed, reading from system environment only")
+    print("[WARNING] python-dotenv not installed, reading from system environment only")
 
 # Try to import httpx
 try:
@@ -65,14 +65,14 @@ def init_judge_provider():
                 import google.generativeai as genai
                 genai.configure(api_key=GEMINI_API_KEY)
                 judge_client = genai
-                judge_model = "gemini-2.5-flash"
+                judge_model = "gemini-2.0-flash-exp"
                 JUDGE_PROVIDER = "gemini"
-                print(f"✓ Using Gemini ({judge_model}) as LLM judge (cost-effective!)")
+                print(f"[OK] Using Gemini ({judge_model}) as LLM judge")
                 return True
             except Exception as e:
-                print(f"⚠ Failed to initialize Gemini: {e}")
+                print(f"[WARNING] Failed to initialize Gemini: {e}")
         else:
-            print("⚠ JUDGE_PROVIDER=gemini but GEMINI_API_KEY not set")
+            print("[WARNING] JUDGE_PROVIDER=gemini but GEMINI_API_KEY not set")
 
     elif JUDGE_PROVIDER_OVERRIDE == "openai":
         if OPENAI_API_KEY:
@@ -86,12 +86,12 @@ def init_judge_provider():
                 )
                 judge_model = "gpt-4o"
                 JUDGE_PROVIDER = "openai"
-                print(f"✓ Using OpenAI ({judge_model}) as LLM judge")
+                print(f"[OK] Using OpenAI ({judge_model}) as LLM judge")
                 return True
             except Exception as e:
-                print(f"⚠ Failed to initialize OpenAI: {e}")
+                print(f"[WARNING] Failed to initialize OpenAI: {e}")
         else:
-            print("⚠ JUDGE_PROVIDER=openai but OPENAI_API_KEY not set")
+            print("[WARNING] JUDGE_PROVIDER=openai but OPENAI_API_KEY not set")
 
     # Auto-detect: Try Gemini first (cheaper), then OpenAI
     if GEMINI_API_KEY:
@@ -99,13 +99,12 @@ def init_judge_provider():
             import google.generativeai as genai
             genai.configure(api_key=GEMINI_API_KEY)
             judge_client = genai
-            judge_model = "gemini-2.5-flash"
+            judge_model = "gemini-2.0-flash-exp"
             JUDGE_PROVIDER = "gemini"
-            print(f"✓ Auto-detected Gemini API key, using {judge_model} as LLM judge (cost-effective!)")
-            print("💡 Tip: Set JUDGE_PROVIDER=openai to use OpenAI instead")
+            print(f"[OK] Auto-detected Gemini API key, using {judge_model} as LLM judge")
             return True
         except Exception as e:
-            print(f"⚠ Gemini initialization failed: {e}")
+            print(f"[WARNING] Gemini initialization failed: {e}")
 
     if OPENAI_API_KEY:
         try:
@@ -118,13 +117,13 @@ def init_judge_provider():
             )
             judge_model = "gpt-4o"
             JUDGE_PROVIDER = "openai"
-            print(f"✓ Auto-detected OpenAI API key, using {judge_model} as LLM judge")
+            print(f"[OK] Auto-detected OpenAI API key, using {judge_model} as LLM judge")
             return True
         except Exception as e:
-            print(f"⚠ OpenAI initialization failed: {e}")
+            print(f"[WARNING] OpenAI initialization failed: {e}")
 
     # No API keys available
-    print("\n❌ ERROR: No LLM API key found for evaluation judge!")
+    print("\n[ERROR] ERROR: No LLM API key found for evaluation judge!")
     print("\nPlease set one of the following:")
     print("  1. export GEMINI_API_KEY='your-gemini-key' (recommended, 70% cheaper)")
     print("  2. export OPENAI_API_KEY='your-openai-key'")
@@ -323,7 +322,7 @@ async def judge_response(
         }
 
     except Exception as e:
-        print(f"  ⚠ Judge error: {e}")
+        print(f"  [WARNING] Judge error: {e}")
         # Return default scores on error
         return {
             "intent_accuracy": 0.0,
@@ -355,7 +354,7 @@ async def evaluate_single_case(
 
     # Check for API errors
     if not agent_response.get("success", False):
-        print(f"✗ API Error: {agent_response.get('error', 'Unknown error')}")
+        print(f"[FAIL] API Error: {agent_response.get('error', 'Unknown error')}")
         return {
             **test_case,
             "api_success": False,
@@ -371,10 +370,10 @@ async def evaluate_single_case(
             "judge_reasoning": "API call failed"
         }
 
-    print(f"✓ Agent: {agent_response.get('agent_used')}")
-    print(f"✓ Tools: {[tc['tool_name'] for tc in agent_response.get('tool_calls', [])]}")
-    print(f"✓ Response: {agent_response.get('response', '')}")
-    print(f"✓ Time: {agent_response.get('execution_time_ms')}ms")
+    print(f"[OK] Agent: {agent_response.get('agent_used')}")
+    print(f"[OK] Tools: {[tc['tool_name'] for tc in agent_response.get('tool_calls', [])]}")
+    print(f"[OK] Response: {agent_response.get('response', '')}")
+    print(f"[OK] Time: {agent_response.get('execution_time_ms')}ms")
 
     # Get LLM judge evaluation
     print("  Evaluating with LLM judge...")
@@ -421,7 +420,7 @@ async def run_evaluation():
         return
 
     df = pd.read_csv(dataset_path)
-    print(f"\n✓ Loaded {len(df)} test cases from golden dataset")
+    print(f"\n[OK] Loaded {len(df)} test cases from golden dataset")
 
     # Run evaluation for each test case
     results = []
@@ -439,13 +438,13 @@ async def run_evaluation():
     # Save detailed results to CSV
     results_path = Path(__file__).parent / "results.csv"
     results_df.to_csv(results_path, index=False)
-    print(f"\n✓ Saved detailed results to {results_path}")
+    print(f"\n[OK] Saved detailed results to {results_path}")
 
     # Calculate aggregate metrics
     successful_tests = results_df[results_df["api_success"] == True]
 
     if len(successful_tests) == 0:
-        print("\n✗ ERROR: No successful API calls. Cannot generate report.")
+        print("\n[FAIL] ERROR: No successful API calls. Cannot generate report.")
         return
 
     metrics = {
@@ -484,9 +483,9 @@ async def run_evaluation():
     if metrics['avg_overall_success'] >= 0.80:
         print(f"\n🎉 SUCCESS! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate!")
     elif metrics['avg_overall_success'] >= 0.70:
-        print(f"\n✓ PASS! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate.")
+        print(f"\n[OK] PASS! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate.")
     else:
-        print(f"\n⚠ NEEDS IMPROVEMENT! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate.")
+        print(f"\n[WARNING] NEEDS IMPROVEMENT! Agent achieved {metrics['avg_overall_success']:.2%} overall success rate.")
 
     print("="*80)
     print(f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -526,7 +525,7 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 | Avg Execution Time | {metrics['avg_execution_time_ms']:.0f}ms |
 | Tests ≥80% Success | {metrics['success_rate_80_plus']:.1%} |
 
-**Result**: {'✅ **EXCEEDS TARGET** (>80%)' if metrics['avg_overall_success'] >= 0.80 else '✅ **MEETS TARGET** (>70%)' if metrics['avg_overall_success'] >= 0.70 else '⚠️ **BELOW TARGET** (<70%)'}
+**Result**: {'[OK] **EXCEEDS TARGET** (>80%)' if metrics['avg_overall_success'] >= 0.80 else '[OK] **MEETS TARGET** (>70%)' if metrics['avg_overall_success'] >= 0.70 else '[WARNING]️ **BELOW TARGET** (<70%)'}
 
 ---
 
@@ -646,11 +645,11 @@ These scenarios had lower success rates:
 
 The Zaylon multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **{metrics['avg_overall_success']:.1%}**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
 
-- ✅ Effective routing and specialization
-- ✅ Proper tool usage and integration
-- ✅ Long-term memory for personalization
-- ✅ Self-correction in RAG search
-- ✅ Multilingual support
+- [OK] Effective routing and specialization
+- [OK] Proper tool usage and integration
+- [OK] Long-term memory for personalization
+- [OK] Self-correction in RAG search
+- [OK] Multilingual support
 
 The system is **production-ready** for deployment in an e-commerce customer service context.
 
@@ -680,25 +679,23 @@ The system is **production-ready** for deployment in an e-commerce customer serv
     with open(report_path, "w") as f:
         f.write(report)
 
-    print(f"\n✓ Generated evaluation report: {report_path}")
+    print(f"\n[OK] Generated evaluation report: {report_path}")
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Zaylon Agent Evaluation...")
-    print("⚠️  Make sure the API server is running on http://localhost:8000")
+    print("\n Starting Zaylon Agent Evaluation...")
+    print("[WARNING]️  Make sure the API server is running on http://localhost:8000")
 
     if JUDGE_PROVIDER == "gemini":
-        print("⚠️  Using Gemini as judge - make sure GEMINI_API_KEY is set")
+        print("[WARNING] Using Gemini as judge - make sure GEMINI_API_KEY is set")
     else:
-        print("⚠️  Using OpenAI as judge - make sure OPENAI_API_KEY is set")
-
-    print("💡 Tip: Set JUDGE_PROVIDER=gemini to use Gemini (cheaper for evaluation!)\n")
+        print("[WARNING] Using OpenAI as judge - make sure OPENAI_API_KEY is set")
 
     try:
         asyncio.run(run_evaluation())
     except KeyboardInterrupt:
-        print("\n\n✗ Evaluation cancelled by user")
+        print("\n\n[FAIL] Evaluation cancelled by user")
     except Exception as e:
-        print(f"\n\n✗ Evaluation failed: {e}")
+        print(f"\n\n[FAIL] Evaluation failed: {e}")
         import traceback
         traceback.print_exc()

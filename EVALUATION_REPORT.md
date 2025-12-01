@@ -27,7 +27,7 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 | Avg Execution Time | 14400ms |
 | Tests ≥80% Success | 76.7% |
 
-**Result**: ⚠️ **BELOW TARGET** (<70%)
+**Result**: [WARNING] **BELOW TARGET** (<70%)
 
 ---
 
@@ -134,11 +134,11 @@ These scenarios had lower success rates:
 
 The Zaylon multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **67.3%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
 
-- ✅ Effective routing and specialization
-- ✅ Proper tool usage and integration
-- ✅ Long-term memory for personalization
-- ✅ Self-correction in RAG search
-- ✅ Multilingual support
+- [OK] Effective routing and specialization
+- [OK] Proper tool usage and integration
+- [OK] Long-term memory for personalization
+- [OK] Self-correction in RAG search
+- [OK] Multilingual support
 
 The system is **production-ready** for deployment in an e-commerce customer service context.
 

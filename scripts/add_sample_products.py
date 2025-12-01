@@ -219,7 +219,7 @@ async def add_sample_products():
             product = Product(**product_data)
             session.add(product)
             added_count += 1
-            print(f"✓ Added '{product_data['name']}'")
+            print(f"[OK] Added '{product_data['name']}'")
 
         await session.commit()
 
@@ -243,7 +243,7 @@ async def add_sample_products():
 
 async def clear_all_products():
     """Remove all products from database (use with caution!)"""
-    print("⚠️  WARNING: This will delete ALL products from the database!")
+    print("[WARNING]️  WARNING: This will delete ALL products from the database!")
     response = input("Are you sure? Type 'yes' to confirm: ")
 
     if response.lower() != 'yes':
@@ -254,7 +254,7 @@ async def clear_all_products():
         from sqlalchemy import delete
         result = await session.execute(delete(Product))
         await session.commit()
-        print(f"✓ Deleted {result.rowcount} products")
+        print(f"[OK] Deleted {result.rowcount} products")
 
 
 if __name__ == "__main__":
@@ -264,4 +264,4 @@ if __name__ == "__main__":
         asyncio.run(clear_all_products())
     else:
         asyncio.run(add_sample_products())
-        print("\n💡 Tip: Use 'python add_sample_products.py --clear' to remove all products")
+        print("\n Tip: Use 'python add_sample_products.py --clear' to remove all products")

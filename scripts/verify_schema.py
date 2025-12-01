@@ -25,10 +25,10 @@ async def verify_schema():
             Product, Order, Conversation, Customer,
             ResponseCache, AnalyticsEvent, CustomerFact, KnowledgeBase
         )
-        print("   ✓ All models imported successfully\n")
+        print("   [OK] All models imported successfully\n")
     except ImportError as e:
         errors.append(f"Failed to import models: {e}")
-        print(f"   ✗ Import failed: {e}\n")
+        print(f"   [FAIL] Import failed: {e}\n")
         return
 
     # Test 2: Verify Product model fields
@@ -41,10 +41,10 @@ async def verify_schema():
 
     for field in required_product_fields:
         if field in product_fields:
-            print(f"   ✓ Product.{field}")
+            print(f"   [OK] Product.{field}")
         else:
             errors.append(f"Product missing field: {field}")
-            print(f"   ✗ Product.{field} MISSING")
+            print(f"   [FAIL] Product.{field} MISSING")
     print()
 
     # Test 3: Verify Order model fields
@@ -58,14 +58,14 @@ async def verify_schema():
 
     for field in required_order_fields:
         if field in order_fields:
-            print(f"   ✓ Order.{field}")
+            print(f"   [OK] Order.{field}")
         else:
             errors.append(f"Order missing field: {field}")
-            print(f"   ✗ Order.{field} MISSING")
+            print(f"   [FAIL] Order.{field} MISSING")
 
     # Check backwards compatibility
     if 'customer_id' in order_fields and 'instagram_user' in order_fields:
-        print("   ✓ Backwards compatibility maintained (both fields present)")
+        print("   [OK] Backwards compatibility maintained (both fields present)")
     else:
         warnings.append("Order backwards compatibility issue")
     print()
@@ -80,10 +80,10 @@ async def verify_schema():
 
     for field in required_conversation_fields:
         if field in conversation_fields:
-            print(f"   ✓ Conversation.{field}")
+            print(f"   [OK] Conversation.{field}")
         else:
             errors.append(f"Conversation missing field: {field}")
-            print(f"   ✗ Conversation.{field} MISSING")
+            print(f"   [FAIL] Conversation.{field} MISSING")
     print()
 
     # Test 5: Verify KnowledgeBase model exists
@@ -96,10 +96,10 @@ async def verify_schema():
 
     for field in required_kb_fields:
         if field in kb_fields:
-            print(f"   ✓ KnowledgeBase.{field}")
+            print(f"   [OK] KnowledgeBase.{field}")
         else:
             errors.append(f"KnowledgeBase missing field: {field}")
-            print(f"   ✗ KnowledgeBase.{field} MISSING")
+            print(f"   [FAIL] KnowledgeBase.{field} MISSING")
     print()
 
     # Test 6: Test database connection
@@ -109,27 +109,27 @@ async def verify_schema():
 
         # Try to initialize
         await init_db()
-        print("   ✓ Database initialization successful")
+        print("   [OK] Database initialization successful")
 
         # Try to create a session
         async with async_session() as session:
-            print("   ✓ Session creation successful")
+            print("   [OK] Session creation successful")
 
         await close_db()
-        print("   ✓ Database connection test passed\n")
+        print("   [OK] Database connection test passed\n")
     except Exception as e:
         warnings.append(f"Database connection issue: {e}")
-        print(f"   ⚠ Database connection warning: {e}\n")
+        print(f"   [WARNING] Database connection warning: {e}\n")
 
     # Test 7: Verify order service backwards compatibility
     print("7. Verifying order service compatibility...")
     try:
         from services.orders import create_order, get_customer_order_history
-        print("   ✓ Order service imports successfully")
-        print("   ✓ Service functions use backwards-compatible queries\n")
+        print("   [OK] Order service imports successfully")
+        print("   [OK] Service functions use backwards-compatible queries\n")
     except ImportError as e:
         errors.append(f"Order service import failed: {e}")
-        print(f"   ✗ Order service import failed: {e}\n")
+        print(f"   [FAIL] Order service import failed: {e}\n")
 
     # Summary
     print("="*70)
@@ -137,7 +137,7 @@ async def verify_schema():
     print("="*70 + "\n")
 
     if not errors and not warnings:
-        print("✅ ALL TESTS PASSED! Schema is fully compatible.")
+        print("[OK] ALL TESTS PASSED! Schema is fully compatible.")
         print("\nYour system is ready for deployment:")
         print("  - All database models match Supabase schema")
         print("  - Backwards compatibility maintained")
@@ -149,13 +149,13 @@ async def verify_schema():
         return_code = 0
     else:
         if errors:
-            print(f"❌ {len(errors)} ERROR(S) FOUND:\n")
+            print(f"[ERROR] {len(errors)} ERROR(S) FOUND:\n")
             for i, error in enumerate(errors, 1):
                 print(f"   {i}. {error}")
             return_code = 1
 
         if warnings:
-            print(f"\n⚠️  {len(warnings)} WARNING(S):\n")
+            print(f"\n[WARNING]️  {len(warnings)} WARNING(S):\n")
             for i, warning in enumerate(warnings, 1):
                 print(f"   {i}. {warning}")
             if not errors:

@@ -7,7 +7,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.0.20-orange)](https://langchain.com)
 [![Evaluation](https://img.shields.io/badge/Evaluation-Ready-brightgreen)](#evaluation-results)
 
-## 🎯 Project Overview
+##  Project Overview
 
 **Zaylon** is an intelligent e-commerce assistant that uses a **hierarchical multi-agent architecture** to handle complex customer conversations. Unlike traditional chatbots that use a single LLM, Zaylon employs:
 
@@ -20,16 +20,16 @@
 ### Why Agentic?
 
 Traditional e-commerce bots struggle with:
-- ❌ Mixed intent queries ("I want to return my order AND buy a new shirt")
-- ❌ Context switching between sales and support
-- ❌ No long-term memory of customer preferences
-- ❌ Poor handling of vague or ambiguous queries
+- [ERROR] Mixed intent queries ("I want to return my order AND buy a new shirt")
+- [ERROR] Context switching between sales and support
+- [ERROR] No long-term memory of customer preferences
+- [ERROR] Poor handling of vague or ambiguous queries
 
 **Zaylon solves these with agents**:
-- ✅ Supervisor intelligently routes to the right specialist
-- ✅ Each agent has specialized tools for its domain
-- ✅ Memory Bank persists customer facts across sessions
-- ✅ RAG self-correction improves search quality
+- [OK] Supervisor intelligently routes to the right specialist
+- [OK] Each agent has specialized tools for its domain
+- [OK] Memory Bank persists customer facts across sessions
+- [OK] RAG self-correction improves search quality
 
 ---
 
@@ -100,7 +100,7 @@ Traditional e-commerce bots struggle with:
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 
@@ -265,37 +265,37 @@ See [V1 API Documentation](./docs/V1_API.md) for details.
 
 The Zaylon agent was evaluated against a **golden dataset of 30 test cases** using **LLM-as-a-Judge** (GPT-4o). Test cases cover:
 
-- ✅ Sales scenarios (product search, orders)
-- ✅ Support scenarios (FAQs, order tracking)
-- ✅ Mixed intent (combined sales + support)
-- ✅ Multilingual (Arabic, Franco-Arabic, English)
-- ✅ Memory retrieval (personalization)
-- ✅ Edge cases (vague queries, self-correction)
+- [OK] Sales scenarios (product search, orders)
+- [OK] Support scenarios (FAQs, order tracking)
+- [OK] Mixed intent (combined sales + support)
+- [OK] Multilingual (Arabic, Franco-Arabic, English)
+- [OK] Memory retrieval (personalization)
+- [OK] Edge cases (vague queries, self-correction)
 
 ### Overall Performance
 
 | Metric | Score | Target | Status |
 |--------|-------|--------|--------|
-| **Overall Success Rate** | **TBD%** | >70% | 🎯 |
-| Intent Accuracy | TBD% | >80% | 🎯 |
-| Tool Selection | TBD% | >75% | 🎯 |
-| Response Quality | TBD% | >80% | 🎯 |
-| Avg Execution Time | TBD ms | <3000ms | 🎯 |
+| **Overall Success Rate** | **TBD%** | >70% |  |
+| Intent Accuracy | TBD% | >80% |  |
+| Tool Selection | TBD% | >75% |  |
+| Response Quality | TBD% | >80% |  |
+| Avg Execution Time | TBD ms | <3000ms |  |
 
 > **Note**: Run the evaluation with `python tests/evaluation/run_eval.py` to generate the full report.
 
 ### Key Findings
 
 **Strengths:**
-- ✅ Excellent routing accuracy (Supervisor correctly identifies intent)
-- ✅ Proper tool selection by specialized agents
-- ✅ Fast execution times (<3s average)
-- ✅ Multilingual support (Arabic, Franco-Arabic, English)
-- ✅ Memory-based personalization works consistently
+- [OK] Excellent routing accuracy (Supervisor correctly identifies intent)
+- [OK] Proper tool selection by specialized agents
+- [OK] Fast execution times (<3s average)
+- [OK] Multilingual support (Arabic, Franco-Arabic, English)
+- [OK] Memory-based personalization works consistently
 
 **Areas for Improvement:**
-- ⚠️ Complex mixed-intent scenarios can occasionally miss one aspect
-- ⚠️ Very vague queries may benefit from clarification prompts
+- [WARNING] Complex mixed-intent scenarios can occasionally miss one aspect
+- [WARNING] Very vague queries may benefit from clarification prompts
 
 **Full Report**: See [EVALUATION_REPORT.md](./EVALUATION_REPORT.md)
 
@@ -391,19 +391,19 @@ docker run -d \
 
 ### Before (Traditional Chatbot)
 
-- ❌ Single LLM handles all queries (poor specialization)
-- ❌ No memory of customer preferences
-- ❌ Mixed intent queries handled poorly
-- ❌ No observability into reasoning
-- ❌ Expensive (every query hits LLM)
+- [ERROR] Single LLM handles all queries (poor specialization)
+- [ERROR] No memory of customer preferences
+- [ERROR] Mixed intent queries handled poorly
+- [ERROR] No observability into reasoning
+- [ERROR] Expensive (every query hits LLM)
 
 ### After (Zaylon Agentic System)
 
-- ✅ Specialized agents with domain expertise
-- ✅ Memory Bank for personalization
-- ✅ Complex queries handled intelligently
-- ✅ Full chain-of-thought logging
-- ✅ 60-80% cost reduction (smart caching + tool use)
+- [OK] Specialized agents with domain expertise
+- [OK] Memory Bank for personalization
+- [OK] Complex queries handled intelligently
+- [OK] Full chain-of-thought logging
+- [OK] 60-80% cost reduction (smart caching + tool use)
 
 ### Quantified Impact
 

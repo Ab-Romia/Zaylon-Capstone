@@ -325,13 +325,13 @@ async def run_all_tests():
         await test_analytics()
         await test_auth_and_rate_limit()
 
-        print_section("✓ ALL TESTS COMPLETED")
+        print_section("[OK] ALL TESTS COMPLETED")
 
     except httpx.ConnectError:
-        print(f"\n{RED}✗ Error: Cannot connect to API server{RESET}")
+        print(f"\n{RED}[FAIL] Error: Cannot connect to API server{RESET}")
         print(f"Make sure the server is running: uvicorn main:app --reload")
     except Exception as e:
-        print(f"\n{RED}✗ Error: {str(e)}{RESET}")
+        print(f"\n{RED}[FAIL] Error: {str(e)}{RESET}")
 
 
 def interactive_menu():

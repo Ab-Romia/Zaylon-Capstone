@@ -126,16 +126,16 @@ Judge Provider: GEMINI
 Judge Model: gemini-1.5-pro
 ================================================================================
 
-✓ Loaded 30 test cases from golden dataset
+[OK] Loaded 30 test cases from golden dataset
 
 ================================================================================
 Test 1: I want to buy a red hoodie in size L
 Expected: sales agent | Easy | English
 ================================================================================
-✓ Agent: sales
-✓ Tools: ['search_products_tool']
-✓ Response: It seems that we currently have...
-✓ Time: 14578ms
+[OK] Agent: sales
+[OK] Tools: ['search_products_tool']
+[OK] Response: It seems that we currently have...
+[OK] Time: 14578ms
   Evaluating with LLM judge...
   Intent: 1.00 | Tool: 1.00 | Quality: 0.90 | Overall: 0.90
   Reasoning: The agent correctly identified...
@@ -158,7 +158,7 @@ Performance:
   Avg Execution Time: 8367ms
   Tests with ≥80% Success: 46.7%
 
-✓ PASS! Agent achieved 69.2% overall success rate.
+[OK] PASS! Agent achieved 69.2% overall success rate.
 ================================================================================
 ```
 

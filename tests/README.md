@@ -35,7 +35,7 @@ Passed: 5
 Failed: 0
 Success Rate: 100.0%
 
-🎉 ALL TESTS PASSED!
+ ALL TESTS PASSED!
 ```
 
 ## Test Cases

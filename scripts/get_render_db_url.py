@@ -24,7 +24,7 @@ def convert_to_render_url(supabase_url):
     # Parse connection string parts
     # Format: user:password@host:port/database
     if '@' not in rest:
-        print("❌ Invalid connection string format")
+        print("[ERROR] Invalid connection string format")
         return None
 
     auth, host_part = rest.split('@', 1)
@@ -75,7 +75,7 @@ def main():
     supabase_url = input("\nPaste your Supabase connection string: ").strip()
 
     if not supabase_url:
-        print("❌ No URL provided")
+        print("[ERROR] No URL provided")
         return
 
     # Convert
@@ -87,18 +87,18 @@ def main():
     render_url, is_pooler, password_encoded = result
 
     print("\n" + "=" * 70)
-    print("  ✅ Conversion Complete!")
+    print("  [OK] Conversion Complete!")
     print("=" * 70)
     print()
 
     if not is_pooler:
-        print("⚠️  WARNING: This is NOT a pooler connection!")
+        print("[WARNING]️  WARNING: This is NOT a pooler connection!")
         print("   For Render, you should use the Connection Pooler endpoint.")
         print("   Go to Supabase → Settings → Database → Connection Pooling")
         print()
 
     if password_encoded:
-        print("✓ Password special characters were URL-encoded")
+        print("[OK] Password special characters were URL-encoded")
         print()
 
     print("🔗 Use this DATABASE_URL in Render:")
@@ -112,16 +112,16 @@ def main():
     print()
 
     if is_pooler:
-        print("✅ Using Connection Pooler (Recommended for Render)")
+        print("[OK] Using Connection Pooler (Recommended for Render)")
         print("   - Port 6543 (pooler) instead of 5432 (direct)")
         print("   - Better performance and IPv4 compatibility")
     else:
-        print("⚠️  Using Direct Connection")
+        print("[WARNING]️  Using Direct Connection")
         print("   - May have IPv6 issues on Render")
         print("   - Recommend switching to Connection Pooler")
 
     print()
-    print("🚀 Next Steps:")
+    print(" Next Steps:")
     print("1. Copy the DATABASE_URL above")
     print("2. Go to Render Dashboard → Your Service → Environment")
     print("3. Add/Update DATABASE_URL environment variable")

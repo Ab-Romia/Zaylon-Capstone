@@ -100,9 +100,9 @@ async def test_all():
         })
 
         if success:
-            print(f"     ✅ SUCCESS - {message}")
+            print(f"     [OK] SUCCESS - {message}")
         else:
-            print(f"     ❌ FAILED - {message}")
+            print(f"     [ERROR] FAILED - {message}")
 
         print()
 
@@ -115,13 +115,13 @@ async def test_all():
     successful = [r for r in results if r['success']]
     failed = [r for r in results if not r['success']]
 
-    print(f"✅ Successful: {len(successful)}")
-    print(f"❌ Failed: {len(failed)}")
+    print(f"[OK] Successful: {len(successful)}")
+    print(f"[ERROR] Failed: {len(failed)}")
     print()
 
     if successful:
         print("=" * 80)
-        print("  ✅ WORKING CONNECTIONS (Use any of these on Render)")
+        print("  [OK] WORKING CONNECTIONS (Use any of these on Render)")
         print("=" * 80)
         print()
 
@@ -153,7 +153,7 @@ async def test_all():
         print()
 
     else:
-        print("❌ No successful connections found!")
+        print("[ERROR] No successful connections found!")
         print()
         print("Troubleshooting:")
         print("1. Check if your Supabase project is active")
@@ -173,8 +173,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(test_all())
     except KeyboardInterrupt:
-        print("\n\n⚠️  Testing interrupted by user")
+        print("\n\n[WARNING]️  Testing interrupted by user")
     except Exception as e:
-        print(f"\n\n❌ Error running tests: {e}")
+        print(f"\n\n[ERROR] Error running tests: {e}")
         import traceback
         traceback.print_exc()
