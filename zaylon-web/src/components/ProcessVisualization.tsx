@@ -1,7 +1,7 @@
 'use client';
 
 import { ProcessStep } from '@/types/agent';
-import { getStatusColor, formatDuration } from '@/lib/utils';
+import { formatDuration } from '@/lib/utils';
 import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
 
 interface ProcessVisualizationProps {
@@ -12,13 +12,28 @@ export function ProcessVisualization({ steps }: ProcessVisualizationProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle2 className="w-5 h-5 text-green-600" />;
+        return <CheckCircle2 className="w-5 h-5 text-green-400" />;
       case 'active':
-        return <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />;
+        return <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />;
       case 'error':
-        return <XCircle className="w-5 h-5 text-red-600" />;
+        return <XCircle className="w-5 h-5 text-red-400" />;
       default:
-        return <Circle className="w-5 h-5 text-gray-400" />;
+        return <Circle className="w-5 h-5 text-gray-500" />;
+    }
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'pending':
+        return 'bg-slate-700 text-gray-300 border-slate-600';
+      case 'active':
+        return 'bg-blue-900/30 text-blue-200 border-blue-500 animate-pulse-soft';
+      case 'completed':
+        return 'bg-green-900/30 text-green-200 border-green-500';
+      case 'error':
+        return 'bg-red-900/30 text-red-200 border-red-500';
+      default:
+        return 'bg-slate-700 text-gray-300';
     }
   };
 
@@ -48,11 +63,11 @@ export function ProcessVisualization({ steps }: ProcessVisualizationProps) {
               <span className="font-medium text-sm">{step.label}</span>
             </div>
             {step.timestamp && (
-              <span className="text-xs text-gray-500">{formatDuration(step.timestamp)}</span>
+              <span className="text-xs text-gray-400">{formatDuration(step.timestamp)}</span>
             )}
           </div>
           {step.details && (
-            <div className="mt-2 text-xs text-gray-600 ml-7 italic">
+            <div className="mt-2 text-xs text-gray-300 ml-7 italic">
               {step.details}
             </div>
           )}

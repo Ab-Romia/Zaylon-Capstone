@@ -22,25 +22,25 @@ export function AnalyticsDashboard({ analytics }: AnalyticsDashboardProps) {
       label: 'Total Time',
       value: formatDuration(analytics.totalTime),
       icon: Clock,
-      color: 'text-blue-600',
+      color: 'text-blue-400',
     },
     {
       label: 'Agent',
       value: analytics.agent.toUpperCase(),
       icon: User,
-      color: 'text-purple-600',
+      color: 'text-purple-400',
     },
     {
       label: 'Tool Calls',
       value: analytics.toolCalls.toString(),
       icon: Wrench,
-      color: 'text-green-600',
+      color: 'text-green-400',
     },
     {
       label: 'Thoughts',
       value: analytics.thoughtsCount.toString(),
       icon: Brain,
-      color: 'text-orange-600',
+      color: 'text-orange-400',
     },
   ];
 
@@ -51,13 +51,13 @@ export function AnalyticsDashboard({ analytics }: AnalyticsDashboardProps) {
         return (
           <div
             key={metric.label}
-            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
+            className="bg-slate-700 rounded-lg border border-slate-600 p-4 hover:bg-slate-600 transition-colors"
           >
             <div className="flex items-center gap-2 mb-2">
               <Icon className={`w-5 h-5 ${metric.color}`} />
-              <span className="text-xs font-medium text-gray-600">{metric.label}</span>
+              <span className="text-xs font-medium text-gray-300">{metric.label}</span>
             </div>
-            <p className="text-2xl font-bold text-gray-900">{metric.value}</p>
+            <p className="text-2xl font-bold text-white">{metric.value}</p>
           </div>
         );
       })}

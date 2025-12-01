@@ -368,7 +368,9 @@ async def stream_zaylon_agent(
                             response = node_output["final_response"]
                             if response:
                                 collected_data["final_response"] = response
-                                yield f"data: {AgentStreamChunk(type='agent_processing', content=f'{collected_data["current_agent"].capitalize()} agent response generated', node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
+                                # Fix: Extract variable to avoid nested f-string quote issues
+                                agent_name = collected_data.get("current_agent", "unknown").capitalize()
+                                yield f"data: {AgentStreamChunk(type='agent_processing', content=f'{agent_name} agent response generated', node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
                                 yield f"data: {AgentStreamChunk(type='log', content='Response generated', node=node_name).model_dump_json()}\n\n"
 
                     elif node_name == "save_memory":

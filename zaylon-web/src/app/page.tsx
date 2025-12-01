@@ -23,44 +23,44 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <main className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-gray-800 p-6">
       <div className="max-w-[1920px] mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-zaylon-primary to-zaylon-secondary bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
             ZAYLON
           </h1>
-          <p className="text-gray-600 mt-1">AI-Powered Customer Engagement That Converts</p>
+          <p className="text-gray-300 mt-1">AI-Powered Customer Engagement That Converts</p>
         </div>
 
         {/* Main Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-120px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[calc(100vh-200px)]">
           {/* Left Column - Chat Interface */}
-          <div className="lg:col-span-2 h-full">
+          <div className="lg:col-span-2 flex flex-col min-h-[600px]">
             <ChatInterface onMessageSend={handleMessageSend} isStreaming={isStreaming} />
           </div>
 
           {/* Right Column - Panels */}
-          <div className="flex flex-col gap-6 h-full">
+          <div className="flex flex-col gap-6 min-h-[600px]">
             {/* Process Visualization */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-200 flex-1 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="bg-slate-800 rounded-lg shadow-lg border border-slate-700 flex-1 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-700 bg-slate-900">
                 <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-zaylon-primary" />
-                  <h3 className="font-semibold text-gray-900">Process Flow</h3>
+                  <Activity className="w-5 h-5 text-blue-400" />
+                  <h3 className="font-semibold text-white">Process Flow</h3>
                 </div>
               </div>
-              <div className="overflow-y-auto h-[calc(100%-60px)]">
+              <div className="overflow-y-auto h-[calc(100%-60px)] max-h-96">
                 <ProcessVisualization steps={processSteps} />
               </div>
             </div>
 
             {/* Analytics Dashboard */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-200">
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="bg-slate-800 rounded-lg shadow-lg border border-slate-700">
+              <div className="px-4 py-3 border-b border-slate-700 bg-slate-900">
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-zaylon-primary" />
-                  <h3 className="font-semibold text-gray-900">Analytics</h3>
+                  <BarChart3 className="w-5 h-5 text-blue-400" />
+                  <h3 className="font-semibold text-white">Analytics</h3>
                 </div>
               </div>
               <AnalyticsDashboard analytics={analytics} />
@@ -69,11 +69,11 @@ export default function Home() {
         </div>
 
         {/* Bottom Panel - System Logs */}
-        <div className="mt-6 bg-white rounded-lg shadow-lg border border-gray-200 h-64 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="mt-6 bg-slate-800 rounded-lg shadow-lg border border-slate-700 h-64 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-700 bg-slate-900">
             <div className="flex items-center gap-2">
-              <Terminal className="w-5 h-5 text-zaylon-primary" />
-              <h3 className="font-semibold text-gray-900">System Logs</h3>
+              <Terminal className="w-5 h-5 text-blue-400" />
+              <h3 className="font-semibold text-white">System Logs</h3>
             </div>
           </div>
           <div className="h-[calc(100%-60px)]">
@@ -82,7 +82,7 @@ export default function Home() {
         </div>
 
         {/* Footer */}
-        <div className="mt-6 text-center text-sm text-gray-500">
+        <div className="mt-6 text-center text-sm text-gray-400">
           <p>Created by Abdelrahman Abouroumia (Romia) & Abdelrahman Mashaal</p>
           <p className="mt-1">ZAYLON v1.0 • Multi-Agent Architecture • Production Ready</p>
         </div>

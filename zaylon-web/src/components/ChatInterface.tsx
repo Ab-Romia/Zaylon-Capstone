@@ -70,20 +70,20 @@ export function ChatInterface({ onMessageSend, isStreaming }: ChatInterfaceProps
   };
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow-lg border border-gray-200">
+    <div className="flex flex-col h-full bg-slate-800 rounded-lg shadow-lg border border-slate-700">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-zaylon-primary to-zaylon-secondary">
+      <div className="px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-blue-600 to-purple-600">
         <h2 className="text-xl font-bold text-white">ZAYLON AI Agent</h2>
         <p className="text-sm text-blue-100">Your intelligent e-commerce assistant</p>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-900">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-gray-400">
             <div className="text-center">
-              <p className="text-lg font-medium mb-2">Welcome to ZAYLON</p>
-              <p className="text-sm">Ask me about products, orders, or policies!</p>
+              <p className="text-lg font-medium mb-2 text-white">Welcome to ZAYLON</p>
+              <p className="text-sm text-gray-300">Ask me about products, orders, or policies!</p>
             </div>
           </div>
         )}
@@ -100,7 +100,7 @@ export function ChatInterface({ onMessageSend, isStreaming }: ChatInterfaceProps
       </div>
 
       {/* Input */}
-      <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+      <div className="px-6 py-4 border-t border-slate-700 bg-slate-800">
         <div className="flex gap-2">
           <input
             type="text"
@@ -109,18 +109,18 @@ export function ChatInterface({ onMessageSend, isStreaming }: ChatInterfaceProps
             onKeyPress={handleKeyPress}
             placeholder="Ask about products, orders, or policies..."
             disabled={isStreaming}
-            className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-zaylon-primary focus:border-transparent outline-none disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
+            className="flex-1 px-4 py-3 rounded-lg border border-slate-600 bg-slate-700 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-slate-600 disabled:cursor-not-allowed transition-all"
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || isStreaming}
-            className="px-6 py-3 bg-zaylon-primary text-white rounded-lg hover:bg-zaylon-secondary transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
           >
             <Send className="w-4 h-4" />
             Send
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-gray-400 mt-2">
           Powered by GPT-4 • Multi-agent architecture • Press Enter to send
         </p>
       </div>

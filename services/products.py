@@ -18,15 +18,21 @@ PRODUCT_KEYWORDS = {
     "pants": ["pants", "بنطلون", "بنطلونات", "pantalon", "bantalon", "trousers"],
     "hoodie": ["hoodie", "هودي", "هوديز", "hoody", "sweatshirt"],
     "shirt": ["shirt", "شيرت", "قميص", "shert", "t-shirt", "tshirt", "tee"],
-    "jacket": ["jacket", "جاكيت", "جاكت", "jaket", "coat"],
-    "shoes": ["shoes", "حذاء", "جزمة", "shoe", "7ezaa2", "gizma", "sneakers"],
+    "jacket": ["jacket", "جاكيت", "جاكت", "jaket", "coat", "معطف"],
+    "shoes": ["shoes", "حذاء", "جزمة", "shoe", "7ezaa2", "gizma", "sneakers", "boots", "footwear"],
     "dress": ["dress", "فستان", "fostan", "dresses"],
     "skirt": ["skirt", "جيبة", "jiba", "skirts"],
     "shorts": ["shorts", "شورت", "short"],
-    "sweater": ["sweater", "سويتر", "pullover"],
-    "bag": ["bag", "شنطة", "حقيبة", "shanta", "bags"],
+    "sweater": ["sweater", "سويتر", "pullover", "knit"],
+    "bag": ["bag", "شنطة", "حقيبة", "shanta", "bags", "handbag"],
     "cap": ["cap", "كاب", "طاقية", "hat"],
+    # Generic categories - will match ANY clothing
+    "clothing": ["clothing", "clothes", "apparel", "wear", "garment", "outfit"],
+    "accessories": ["accessories", "accessory", "اكسسوار"],
 }
+
+# Broad category fallback - if query contains these, return all products
+BROAD_CATEGORIES = ["clothing", "clothes", "products", "items", "stuff", "things", "apparel"]
 
 # Color mappings
 COLOR_KEYWORDS = {
@@ -114,70 +120,108 @@ async def search_products(
     limit: int = 3
 ) -> ProductSearchResponse:
     """
-    Search products using multilingual keyword matching.
+    Search products using hybrid approach:
+    1. Keyword matching for specific items
+    2. Semantic search fallback for broad queries
+    3. Return ALL products for very broad categories
 
-    This is a RAG-lite approach:
-    1. Detect language
-    2. Extract product keywords in any language
-    3. Search database using fuzzy matching
-    4. Return formatted results for AI context
+    This is a RAG-enhanced approach that handles:
+    - Specific queries: "black hoodie" → keyword match
+    - Synonyms: "shoes" → matches "sneakers", "boots"
+    - Broad queries: "clothing" → returns diverse selection
     """
     logger.info(f"Searching products with query: {query}")
 
     # Detect language
     detected_language = detect_language(query)
+    query_lower = query.lower()
 
-    # Extract keywords
-    product_keywords, color_keywords = extract_product_keywords(query)
-    size = extract_size(query)
+    # Check for broad category queries first
+    is_broad_query = any(cat in query_lower for cat in BROAD_CATEGORIES)
 
-    all_keywords = list(product_keywords) + list(color_keywords)
-    if size:
-        all_keywords.append(size)
-
-    logger.info(f"Detected language: {detected_language}, keywords: {all_keywords}")
-
-    # Build database query
-    conditions = []
-
-    # Add product keyword conditions
-    for keyword in product_keywords:
-        conditions.append(Product.name.ilike(f"%{keyword}%"))
-        conditions.append(Product.description.ilike(f"%{keyword}%"))
-
-    # Add color conditions
-    for color in color_keywords:
-        # Check if color is in the colors array
-        conditions.append(Product.colors.any(color))
-
-    # If no specific keywords found, do a general text search
-    if not conditions:
-        query_words = query.split()
-        for word in query_words:
-            if len(word) > 2:  # Skip very short words
-                conditions.append(Product.name.ilike(f"%{word}%"))
-                conditions.append(Product.description.ilike(f"%{word}%"))
-
-    # Execute query
-    if conditions:
+    if is_broad_query:
+        logger.info(f"Broad category query detected: {query}")
+        # Return diverse selection of products for broad queries
         stmt = (
             select(Product)
             .where(Product.is_active == True)
-            .where(or_(*conditions))
             .order_by(Product.stock_count.desc())
-            .limit(limit)
+            .limit(limit * 2)  # Return more for broad queries
         )
+        result = await db.execute(stmt)
+        products = result.scalars().all()
     else:
-        # Fallback: return top products by stock
-        stmt = (
-            select(Product)
-            .where(Product.is_active == True)
-            .order_by(Product.stock_count.desc())
-            .limit(limit)
-        )
+        # Extract keywords
+        product_keywords, color_keywords = extract_product_keywords(query)
+        size = extract_size(query)
 
-    result = await db.execute(stmt)
-    products = result.scalars().all()
+        all_keywords = list(product_keywords) + list(color_keywords)
+        if size:
+            all_keywords.append(size)
+
+        logger.info(f"Detected language: {detected_language}, keywords: {all_keywords}")
+
+        # Build database query with enhanced matching
+        conditions = []
+
+        # Add product keyword conditions - match against actual query words too
+        for keyword in product_keywords:
+            conditions.append(Product.name.ilike(f"%{keyword}%"))
+            conditions.append(Product.description.ilike(f"%{keyword}%"))
+
+        # Add color conditions
+        for color in color_keywords:
+            conditions.append(Product.colors.any(color))
+
+        # Enhanced: Also search for individual query words
+        query_words = [w for w in query_lower.split() if len(w) > 2]
+        for word in query_words:
+            conditions.append(Product.name.ilike(f"%{word}%"))
+            conditions.append(Product.description.ilike(f"%{word}%"))
+
+        # Execute query
+        if conditions:
+            stmt = (
+                select(Product)
+                .where(Product.is_active == True)
+                .where(or_(*conditions))
+                .order_by(Product.stock_count.desc())
+                .limit(limit)
+            )
+        else:
+            # Fallback: return top products by stock
+            stmt = (
+                select(Product)
+                .where(Product.is_active == True)
+                .order_by(Product.stock_count.desc())
+                .limit(limit)
+            )
+
+        result = await db.execute(stmt)
+        products = result.scalars().all()
+
+    # If keyword search returned 0 results, try semantic search
+    if not products:
+        logger.info(f"Keyword search returned 0 results, attempting semantic search...")
+        try:
+            from services.rag import get_rag_service
+            rag_service = get_rag_service()
+            semantic_results = await rag_service.search_products_semantic(
+                query=query,
+                db=db,
+                limit=limit,
+                min_score=0.4  # Lower threshold for broader matching
+            )
+            if semantic_results:
+                logger.info(f"Semantic search found {len(semantic_results)} products")
+                # Convert semantic results to Product objects
+                product_ids = [r['id'] for r in semantic_results]
+                stmt = select(Product).where(Product.id.in_(product_ids))
+                result = await db.execute(stmt)
+                products = result.scalars().all()
+        except Exception as e:
+            logger.warning(f"Semantic search fallback failed: {e}")
+            # Continue with empty products
 
     # Format products for response
     product_list = []
