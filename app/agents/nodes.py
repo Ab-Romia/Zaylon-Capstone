@@ -73,7 +73,7 @@ def get_tool_calls(response):
     return []
 
 
-def sanitize_message_history(messages: List[BaseMessage]) -> List[BaseMessage]:
+def sanitize_message_history(messages: List[AIMessage]) -> List[AIMessage]:
     """
     Sanitize message history to ensure all tool_calls have corresponding tool responses.
 
