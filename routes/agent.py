@@ -269,7 +269,8 @@ async def stream_zaylon_agent(
 
         try:
             # Emit initial log
-            yield f"data: {AgentStreamChunk(type='log', content=f'Message received from {body.customer_id}').model_dump_json()}\n\n"
+            initial_msg = f"Message received from {body.customer_id}"
+            yield f"data: {AgentStreamChunk(type='log', content=initial_msg).model_dump_json()}\n\n"
 
             async for event in stream_agent(
                 customer_id=body.customer_id,
@@ -282,7 +283,8 @@ async def stream_zaylon_agent(
                     execution_time_ms = int((time.time() - start_time) * 1000)
 
                     # Emit error log
-                    yield f"data: {AgentStreamChunk(type='log', content=f'ERROR: {error_msg}').model_dump_json()}\n\n"
+                    error_content = f"ERROR: {error_msg}"
+                    yield f"data: {AgentStreamChunk(type='log', content=error_content).model_dump_json()}\n\n"
 
                     # Emit final error response
                     yield f"data: {AgentStreamChunk(type='final_response', success=False, response='I apologize, but I encountered an error.', agent_used='unknown', chain_of_thought=[], tool_calls=[], user_profile={}, execution_time_ms=execution_time_ms, thread_id=thread_id, error=error_msg, done=True).model_dump_json()}\n\n"
@@ -332,7 +334,8 @@ async def stream_zaylon_agent(
                         if "user_profile" in node_output:
                             collected_data["user_profile"] = node_output["user_profile"]
                             fact_count = len(node_output["user_profile"])
-                            yield f"data: {AgentStreamChunk(type='log', content=f'Found {fact_count} customer facts', node=node_name).model_dump_json()}\n\n"
+                            facts_content = f"Found {fact_count} customer facts"
+                            yield f"data: {AgentStreamChunk(type='log', content=facts_content, node=node_name).model_dump_json()}\n\n"
 
                     elif node_name == "supervisor":
                         # Routing decision
@@ -340,8 +343,10 @@ async def stream_zaylon_agent(
 
                         if "next" in node_output:
                             next_agent = node_output["next"]
-                            yield f"data: {AgentStreamChunk(type='thinking', content=f'Routing decision: {next_agent.upper()}', node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
-                            yield f"data: {AgentStreamChunk(type='log', content=f'Routed to {next_agent} agent', node=node_name).model_dump_json()}\n\n"
+                            routing_content = f"Routing decision: {next_agent.upper()}"
+                            routed_content = f"Routed to {next_agent} agent"
+                            yield f"data: {AgentStreamChunk(type='thinking', content=routing_content, node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
+                            yield f"data: {AgentStreamChunk(type='log', content=routed_content, node=node_name).model_dump_json()}\n\n"
 
                     elif node_name in ["sales_agent", "support_agent"]:
                         # Agent processing
@@ -368,14 +373,18 @@ async def stream_zaylon_agent(
                                     tool_result = tool_call.get("result")
 
                                     # Emit tool call
-                                    yield f"data: {AgentStreamChunk(type='tool_call', tool_name=tool_name, tool_args=tool_args, content=f'Calling {tool_name}', node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
-                                    yield f"data: {AgentStreamChunk(type='log', content=f'Tool: {tool_name}', node=node_name).model_dump_json()}\n\n"
+                                    calling_msg = f"Calling {tool_name}"
+                                    tool_log = f"Tool: {tool_name}"
+                                    yield f"data: {AgentStreamChunk(type='tool_call', tool_name=tool_name, tool_args=tool_args, content=calling_msg, node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
+                                    yield f"data: {AgentStreamChunk(type='log', content=tool_log, node=node_name).model_dump_json()}\n\n"
 
                                     # Emit tool result if available
                                     if tool_result:
                                         result_preview = str(tool_result)[:200]
-                                        yield f"data: {AgentStreamChunk(type='tool_result', tool_name=tool_name, tool_result=result_preview, content=f'{tool_name} completed', node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
-                                        yield f"data: {AgentStreamChunk(type='log', content=f'{tool_name} completed successfully', node=node_name).model_dump_json()}\n\n"
+                                        completed_msg = f"{tool_name} completed"
+                                        success_msg = f"{tool_name} completed successfully"
+                                        yield f"data: {AgentStreamChunk(type='tool_result', tool_name=tool_name, tool_result=result_preview, content=completed_msg, node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
+                                        yield f"data: {AgentStreamChunk(type='log', content=success_msg, node=node_name).model_dump_json()}\n\n"
 
                                 collected_data["tool_calls"] = tool_calls
 
@@ -384,7 +393,9 @@ async def stream_zaylon_agent(
                             response = node_output["final_response"]
                             if response:
                                 collected_data["final_response"] = response
-                                yield f"data: {AgentStreamChunk(type='agent_processing', content=f'{collected_data["current_agent"].capitalize()} agent response generated', node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
+                                agent_name = collected_data["current_agent"].capitalize()
+                                content_msg = f"{agent_name} agent response generated"
+                                yield f"data: {AgentStreamChunk(type='agent_processing', content=content_msg, node=node_name, execution_time_ms=node_time).model_dump_json()}\n\n"
                                 yield f"data: {AgentStreamChunk(type='log', content='Response generated', node=node_name).model_dump_json()}\n\n"
 
                     elif node_name == "save_memory":
@@ -395,14 +406,16 @@ async def stream_zaylon_agent(
                             collected_data["user_profile"] = node_output["user_profile"]
                             new_facts = len(node_output["user_profile"]) - len(collected_data.get("initial_profile", {}))
                             if new_facts > 0:
-                                yield f"data: {AgentStreamChunk(type='log', content=f'Saved {new_facts} new facts', node=node_name).model_dump_json()}\n\n"
+                                facts_msg = f"Saved {new_facts} new facts"
+                                yield f"data: {AgentStreamChunk(type='log', content=facts_msg, node=node_name).model_dump_json()}\n\n"
 
         except Exception as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
             logger.error(f"[STREAM] Error during streaming: {e}", exc_info=True)
 
             # Emit error log
-            yield f"data: {AgentStreamChunk(type='log', content=f'FATAL ERROR: {str(e)}').model_dump_json()}\n\n"
+            fatal_error_msg = f"FATAL ERROR: {str(e)}"
+            yield f"data: {AgentStreamChunk(type='log', content=fatal_error_msg).model_dump_json()}\n\n"
 
             # Emit final error response
             yield f"data: {AgentStreamChunk(type='final_response', success=False, response='I apologize, but I encountered an unexpected error.', agent_used='unknown', chain_of_thought=[], tool_calls=[], user_profile={}, execution_time_ms=execution_time_ms, thread_id=thread_id, error=str(e), done=True).model_dump_json()}\n\n"
