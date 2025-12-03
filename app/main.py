@@ -3,14 +3,16 @@ E-commerce DM Microservice - FastAPI Application
 Main entry point with modular route organization.
 """
 import logging
+import warnings
 from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.db import init_db, close_db
@@ -133,6 +135,26 @@ app.include_router(api_router, prefix="/api/v1")
 
 # Include Agent v2 router (mounted at root level with its own /api/v2 prefix)
 app.include_router(agent_v2_router)
+
+# Serve frontend static files
+static_path = Path(__file__).parent / "static"
+
+@app.get("/")
+async def serve_home():
+    """Serve the web interface."""
+    index_path = static_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    else:
+        raise HTTPException(status_code=404, detail="Web interface not found. Please ensure static/index.html exists.")
+
+# Mount static directory for any other static assets if it exists
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    logger.info(f"Web interface available at {static_path}")
+else:
+    logger.warning("Static directory not found. Web interface will be unavailable.")
+
 
 
 if __name__ == "__main__":
