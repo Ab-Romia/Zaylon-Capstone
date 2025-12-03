@@ -1,6 +1,6 @@
 # Zaylon: Hierarchical Multi-Agent E-commerce Assistant
 
-> **AI Engineering Capstone Project**: A production-ready, LangGraph-powered multi-agent system for e-commerce customer service automation.
+> **Google's Intensive Agentic AI Capstone**: A production-ready, LangGraph-powered multi-agent system for e-commerce customer service automation.
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green)](https://fastapi.tiangolo.com)
@@ -304,7 +304,6 @@ The Zaylon agent was evaluated against a **golden dataset of 29 test cases** usi
 **Strengths:**
 - [OK] Excellent routing accuracy (Supervisor correctly identifies intent)
 - [OK] Proper tool selection by specialized agents
-- [OK] Fast execution times (<3s average)
 - [OK] Multilingual support (Arabic, Franco-Arabic, English)
 - [OK] Memory-based personalization works consistently
 
@@ -428,7 +427,7 @@ docker run -d \
 | Response Relevance | +42% quality |
 | Customer Satisfaction | +28% (projected) |
 | AI API Costs | -65% (caching + tool use) |
-| Avg Response Time | 2.3s (real-time) |
+| Avg Response Time | 7.9s |
 
 ---
 
@@ -509,9 +508,11 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 📞 Contact
 
-**Project Lead**: Abdelrahman Romia
+**Project Contributors**:
+- Abdelrahman Romia (Ab-Romia)
+- Abdelrahman Mashaal
 
-**Capstone Submission**: AI Engineering Bootcamp 2025
+**Capstone Submission**: Google's Intensive Agentic AI Capstone 2025
 
 ---
 
@@ -525,4 +526,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with ❤️ for the AI Engineering Bootcamp Capstone Project**
+**Built with ❤️ for Google's Intensive Agentic AI Capstone**
