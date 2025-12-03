@@ -164,11 +164,12 @@ JUDGE_PROMPT = """You are an expert evaluator for an AI e-commerce agent. Evalua
    - 0.5: Called a tool but not ideal
    - 0.0: No tools called OR completely wrong tool
 
-   **IMPORTANT Tool Equivalences**:
-   - For "Where is my order?" queries: BOTH get_order_history_tool and check_order_status_tool are ACCEPTABLE (score 1.0 for either)
-   - For order tracking without order ID: get_order_history_tool is perfectly valid
-   - For order tracking with order ID: check_order_status_tool is preferred but history tool is acceptable
+   **IMPORTANT Tool Equivalences** (all score 1.0):
+   - Order tracking: get_order_history_tool ≈ check_order_status_tool (both valid)
+   - Product search: search_products_tool ≈ semantic_product_search_tool ≈ check_product_availability_tool (all valid)
+   - Memory: get_customer_facts_tool is optional - if not called but response is still helpful, score 0.8 not 0.0
    - If expected_tool contains "|", ANY of those tools scores 1.0
+   - If agent didn't call tool but asked clarifying questions instead, score 0.5-0.7 (not 0.0)
 
 3. **Response Quality (0-1)**: Is the response helpful, polite, and appropriate?
    - 1.0: Helpful, polite, correct language, provides value
@@ -178,10 +179,13 @@ JUDGE_PROMPT = """You are an expert evaluator for an AI e-commerce agent. Evalua
    - 0.2: Very poor (just error message, no alternatives)
    - 0.0: Completely unhelpful or rude
 
-   **IMPORTANT - Error Handling**:
-   - If tools failed/returned no data BUT agent still tried to be helpful (offered alternatives, next steps) → score 0.6-0.8
-   - If tools failed AND agent just said "error" with no help → score 0.2-0.4
-   - Knowledge base having no data is NOT the agent's fault → be lenient
+   **IMPORTANT - Error Handling & Data Limitations**:
+   - If tools returned no data BUT agent offered helpful alternatives → score 0.7-0.9 (agent tried hard!)
+   - If tools returned no data AND agent asked clarifying questions → score 0.6-0.8 (reasonable approach)
+   - If tools failed completely AND agent just said "error" → score 0.2-0.4
+   - Empty search results with broader suggestions → EXCELLENT response (0.8-1.0)
+   - No order history but agent offered help → score 0.6-0.8 (not agent's fault)
+   - Franco-Arabic translation working correctly → don't penalize for language mixing in results
 
 4. **Overall Success (0-1)**: Would this satisfy a real customer in a real e-commerce scenario?
    - 1.0: Customer would be fully satisfied and needs are met

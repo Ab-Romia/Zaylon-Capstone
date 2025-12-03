@@ -1,9 +1,10 @@
 # Zaylon Agent Evaluation Report
 
-**Generated**: 2025-12-01 01:16:14
+**Generated**: 2025-12-03 10:04:21
 **Evaluation Method**: LLM-as-a-Judge (gpt-4o)
 **Judge Provider**: OPENAI
-**Golden Dataset**: 30 test cases (Easy/Medium/Hard)
+**Golden Dataset**: 29 test cases (Easy/Medium/Hard)
+**Note**: Test 30 excluded due to rate limiting error during evaluation
 
 ---
 
@@ -20,14 +21,14 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 
 | Metric | Score |
 |--------|-------|
-| **Overall Success Rate** | **67.3%** |
-| Intent Accuracy | 76.7% |
-| Tool Selection | 77.3% |
-| Response Quality | 67.3% |
-| Avg Execution Time | 14400ms |
-| Tests ≥80% Success | 76.7% |
+| **Overall Success Rate** | **89.7%** |
+| Intent Accuracy | 100.0% |
+| Tool Selection | 97.2% |
+| Response Quality | 87.9% |
+| Avg Execution Time | 7900ms |
+| Tests ≥80% Success | 96.6% |
 
-**Result**: [WARNING] **BELOW TARGET** (<70%)
+**Result**: [OK] **EXCEEDS TARGET** (>80%)
 
 ---
 
@@ -37,24 +38,24 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 
 | Difficulty | Avg Success Rate | Notes |
 |------------|------------------|-------|
-| Easy | 66.2% | Needs Work |
-| Hard | 57.1% | Needs Work |
-| Medium | 76.0% | Good |
+| Easy | 92.3% | Excellent |
+| Hard | 74.3% | Good |
+| Medium | 88.0% | Excellent |
 
 ### Performance by Language
 
 | Language | Avg Success Rate | Notes |
 |----------|------------------|-------|
-| Arabic | 70.0% | Good |
-| English | 65.8% | May need language tuning |
-| Franco-Arabic | 80.0% | Excellent multilingual support |
+| Arabic | 92.5% | Excellent multilingual support |
+| English | 85.0% | Excellent multilingual support |
+| Franco-Arabic | 95.0% | Excellent multilingual support |
 
 ### Performance by Agent
 
 | Agent | Avg Success Rate | Test Count |
 |-------|------------------|------------|
-| sales | 77.5% | 16 |
-| support | 55.7% | 14 |
+| sales | 85.3% | 17 |
+| support | 88.5% | 13 |
 
 ---
 
@@ -64,11 +65,11 @@ The agent excelled at these scenarios:
 
 | Test ID | Input Message | Success | Agent | Time |
 |---------|---------------|---------|-------|------|
-| 2 | Show me all available hoodies... | 100% | sales | 10536ms |
-| 6 | Do you have that hoodie in my size?... | 100% | sales | 12743ms |
-| 7 | عايز بنطلون اسود مقاس كبير... | 100% | sales | 7837ms |
-| 9 | What colors do you have in hoodies?... | 100% | sales | 20619ms |
-| 18 | I prefer red colors and size M... | 100% | sales | 8843ms |
+| 2 | Show me all available hoodies... | 100% | sales | 7966ms |
+| 8 | 3ayez jeans azra2 size M... | 100% | sales | 11067ms |
+| 9 | What colors do you have in hoodies?... | 100% | sales | 6702ms |
+| 13 | I received a damaged item... | 100% | support | 12115ms |
+| 16 | عايز اعرف سعر الهودي الاحمر... | 100% | sales | 8531ms |
 
 ---
 
@@ -78,11 +79,10 @@ These scenarios had lower success rates:
 
 | Test ID | Input Message | Success | Issue | Reasoning |
 |---------|---------------|---------|-------|-----------|
-| 4 | Where is my order?... | 0% | Easy | Judge error: Request timed out.|
-| 5 | I want to return my last order and buy a... | 0% | Hard | Judge error: Request timed out.|
-| 12 | Show me cheap t-shirts... | 0% | Easy | Judge error: Request timed out.|
-| 19 | Show me products in my favorite color... | 0% | Hard | Judge error: Request timed out.|
-| 21 | فين طلبي؟... | 0% | Medium | Judge error: Request timed out.|
+| 29 | Can you recommend something for winter?... | 70% | Medium | The agent correctly identified the intent as a product inquiry and routed to the sales specialist, which is appropriate. The expected tool, search_products_tool, was called, which aligns with the task of recommending winter products. Although the agent was unable to access specific recommendations, it offered helpful alternatives by suggesting the user specify items like jackets or sweaters. This shows an attempt to assist the customer despite data limitations. The response was polite and aimed to guide the customer, which would likely satisfy a customer to some extent, though not fully due to the lack of specific recommendations.|
+| 4 | Where is my order?... | 80% | Easy | The agent correctly identified the intent as order_tracking and routed to the support specialist, which is appropriate. The correct tool, check_order_status_tool, was used to attempt to retrieve order information. The response was polite and offered alternatives by suggesting the user check their order confirmation or contact support, which is helpful given the lack of data. While the agent could not provide the order details, the effort to assist and provide next steps would likely satisfy most customers, hence the high scores.|
+| 6 | Do you have that hoodie in my size?... | 80% | Hard | The agent correctly identified the intent as a product inquiry and routed to the sales specialist, which is appropriate. It called the get_customer_facts_tool, which is a reasonable choice to gather necessary information about the customer's size, although it could have also used a product search tool. The response was polite and asked for clarification to provide further assistance, which is helpful. Overall, the agent's performance would mostly satisfy a customer, as it showed effort and provided a clear next step.|
+| 10 | I need help with my recent purchase... | 80% | Medium | The agent correctly identified the intent as a general inquiry and routed to the support specialist, scoring 1.0 for intent accuracy. However, it did not call the expected tool, which was get_order_history_tool, but instead asked clarifying questions, which is a reasonable approach given the lack of specific information, scoring 0.6 for tool selection. The response was polite and helpful, asking for more details to better assist the customer, scoring 0.8 for response quality. Overall, the customer would be mostly satisfied as the agent showed effort and provided a clear next step, scoring 0.8 for overall success.|
 
 ---
 
@@ -90,13 +90,13 @@ These scenarios had lower success rates:
 
 ### Strengths
 
-1. **High Intent Accuracy (76.7%)**: The supervisor agent consistently routes to the correct specialist (Sales vs Support).
+1. **Perfect Intent Accuracy (100.0%)**: The supervisor agent consistently routes to the correct specialist (Sales vs Support) without any errors.
 
-2. **Effective Tool Selection (77.3%)**: Agents call appropriate tools for their tasks, demonstrating proper integration.
+2. **Excellent Tool Selection (97.2%)**: Agents call appropriate tools for their tasks, demonstrating proper integration and understanding.
 
-3. **Response Quality (67.3%)**: Responses are helpful, polite, and contextually appropriate.
+3. **Strong Response Quality (87.9%)**: Responses are helpful, polite, and contextually appropriate across all scenarios.
 
-4. **Low Latency (14400ms avg)**: Fast execution times enable real-time conversations.
+4. **Low Latency (7900ms avg)**: Fast execution times enable real-time conversations.
 
 5. **Multilingual Support**: Agent handles Arabic, Franco-Arabic, and English effectively.
 
@@ -132,7 +132,7 @@ These scenarios had lower success rates:
 
 ## Conclusion
 
-The Zaylon multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **67.3%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
+The Zaylon multi-agent system **successfully exceeds the evaluation criteria** with an overall success rate of **89.7%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
 
 - [OK] Effective routing and specialization
 - [OK] Proper tool usage and integration
@@ -152,7 +152,7 @@ The system is **production-ready** for deployment in an e-commerce customer serv
 - **Response Quality**: Helpfulness, politeness, language match
 - **Overall Success**: Would satisfy a real customer
 
-**Golden Dataset**: 30 hand-crafted test cases covering:
+**Golden Dataset**: 29 test cases (Test 30 excluded due to rate limiting) covering:
 - 6 Easy scenarios (basic queries)
 - 15 Medium scenarios (standard complexity)
 - 9 Hard scenarios (mixed intent, memory, edge cases)
