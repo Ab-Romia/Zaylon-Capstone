@@ -9,9 +9,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from pathlib import Path
 
 from config import get_settings
 from database import init_db, close_db
@@ -147,6 +149,22 @@ app.include_router(analytics_router)
 app.include_router(n8n_router)
 app.include_router(rag_router)
 app.include_router(agent_router)  # Zaylon v2 agentic API
+
+# Serve frontend static files
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    # Serve index.html at root
+    @app.get("/")
+    async def serve_home():
+        """Serve the web interface."""
+        return FileResponse(str(static_path / "index.html"))
+
+    # Mount static directory for any other static assets
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+    logger.info(f"Web interface available at {static_path}")
+else:
+    logger.warning("Static directory not found. Web interface unavailable.")
 
 
 if __name__ == "__main__":

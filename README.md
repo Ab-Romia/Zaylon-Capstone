@@ -159,9 +159,24 @@ docker run -p 8000:8000 --env-file .env zaylon
 ```
 
 Service will be available at:
-- API: `http://localhost:8000`
+- **🌐 Web Interface**: `http://localhost:8000` (Interactive chat UI!)
+- API: `http://localhost:8000/api/v2/agent/invoke`
 - Docs: `http://localhost:8000/docs`
 - Health: `http://localhost:8000/health`
+
+### 🎨 Using the Web Interface
+
+1. Open `http://localhost:8000` in your browser
+2. Enter your OpenAI API key (starts with `sk-`)
+3. Click "Save Key" - your key is stored only in your browser, never sent to our servers
+4. Start chatting with Zaylon!
+
+**Features**:
+- ✅ Real-time chat interface
+- ✅ Chain-of-thought visualization
+- ✅ Tool call tracking
+- ✅ Agent routing visibility
+- ✅ Secure API key handling (browser-only storage)
 
 ---
 

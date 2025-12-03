@@ -8,7 +8,7 @@ import time
 import uuid
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +38,8 @@ async def invoke_zaylon_agent(
     request: Request,
     body: AgentInvokeRequest,
     db: AsyncSession = Depends(get_db),
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    openai_key: str = Header(None, alias="X-OpenAI-Key")
 ):
     """
     Invoke the Zaylon multi-agent system.
@@ -60,6 +61,14 @@ async def invoke_zaylon_agent(
 
     # Use thread_id from request or generate one
     thread_id = body.thread_id or str(uuid.uuid4())
+
+    # Handle user-provided OpenAI API key
+    import os
+    original_key = None
+    if openai_key:
+        logger.info("Using user-provided OpenAI API key")
+        original_key = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = openai_key
 
     try:
         # Invoke the agent
@@ -204,6 +213,13 @@ async def invoke_zaylon_agent(
             thread_id=thread_id,
             error=str(e)
         )
+    finally:
+        # Restore original OpenAI API key if it was temporarily changed
+        if openai_key and original_key is not None:
+            os.environ["OPENAI_API_KEY"] = original_key
+        elif openai_key and original_key is None:
+            # User provided key but there was no original key - remove it
+            os.environ.pop("OPENAI_API_KEY", None)
 
 @router.post(
     "/stream",
