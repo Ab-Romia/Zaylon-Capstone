@@ -152,19 +152,22 @@ app.include_router(agent_router)  # Zaylon v2 agentic API
 
 # Serve frontend static files
 static_path = Path(__file__).parent / "static"
+
+@app.get("/")
+async def serve_home():
+    """Serve the web interface."""
+    index_path = static_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    else:
+        raise HTTPException(status_code=404, detail="Web interface not found. Please ensure static/index.html exists.")
+
+# Mount static directory for any other static assets if it exists
 if static_path.exists():
-    # Serve index.html at root
-    @app.get("/")
-    async def serve_home():
-        """Serve the web interface."""
-        return FileResponse(str(static_path / "index.html"))
-
-    # Mount static directory for any other static assets
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-
     logger.info(f"Web interface available at {static_path}")
 else:
-    logger.warning("Static directory not found. Web interface unavailable.")
+    logger.warning("Static directory not found. Web interface will be unavailable.")
 
 
 if __name__ == "__main__":
