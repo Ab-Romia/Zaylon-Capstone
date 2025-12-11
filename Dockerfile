@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Make startup script executable
+RUN chmod +x scripts/startup.sh
+
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app
@@ -38,6 +41,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import httpx; httpx.get('http://localhost:8000/api/v1/health')" || exit 1
 
-# Run the application with new structure
-# Use shell form to expand $PORT environment variable (required for Render)
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
+# Run startup script which:
+# 1. Populates knowledge base
+# 2. Validates collections
+# 3. Starts the server
+CMD ["bash", "scripts/startup.sh"]

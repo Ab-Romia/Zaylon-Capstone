@@ -5,8 +5,11 @@ services:
   - type: web
     name: zaylon-ai-service
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install -r requirements.txt
+      python scripts/populate_knowledge_base.py
+      python scripts/validate_collections.py
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -16,6 +19,20 @@ services:
         value: false
       - key: RATE_LIMIT_PER_MINUTE
         value: 100
+      # Qdrant Configuration (required for knowledge base)
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION_PRODUCTS
+        value: products
+      - key: QDRANT_COLLECTION_KNOWLEDGE
+        value: knowledge_base
+      # Embedding Configuration
+      - key: USE_LOCAL_EMBEDDINGS
+        value: false
+      - key: OPENAI_API_KEY
+        sync: false
     healthCheckPath: /api/v1/health
     plan: free
     region: frankfurt  # Choose: oregon, frankfurt, ohio, singapore

@@ -64,6 +64,27 @@ async def lifespan(app: FastAPI):
         if vector_db.is_connected():
             await init_vector_db(embedding_dim)
             logger.info("Vector database (Qdrant) initialized")
+
+            # Validate collections have data (warning only, don't fail startup)
+            try:
+                collections_to_check = [
+                    (settings.qdrant_collection_products, "Products"),
+                    (settings.qdrant_collection_knowledge, "Knowledge Base")
+                ]
+
+                for collection_name, description in collections_to_check:
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore")
+                        collection_info = vector_db.client.get_collection(collection_name)
+                        points_count = collection_info.points_count
+
+                    if points_count == 0:
+                        logger.warning(f"⚠️  Collection '{collection_name}' ({description}) is EMPTY!")
+                        logger.warning(f"   Run 'python scripts/populate_knowledge_base.py' to populate")
+                    else:
+                        logger.info(f"✅ Collection '{collection_name}' ({description}): {points_count} points")
+            except Exception as e:
+                logger.warning(f"Could not validate collections: {e}")
         else:
             logger.warning("Vector database not connected - RAG features will be limited")
     except Exception as e:

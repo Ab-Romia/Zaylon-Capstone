@@ -4,9 +4,15 @@ Run this after server startup to add missing FAQs identified in evaluation.
 """
 import asyncio
 import logging
+import sys
 from services.ingestion import get_ingestion_service
+from services.vector_db import get_vector_db
+from config import get_settings
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -262,18 +268,109 @@ Pants and Jeans:
 ]
 
 
+def pre_flight_checks():
+    """
+    Perform pre-flight checks before starting ingestion.
+    Validates Qdrant connection and configuration.
+    """
+    logger.info("="*60)
+    logger.info("PRE-FLIGHT CHECKS")
+    logger.info("="*60)
+
+    # Check 1: Load settings
+    try:
+        settings = get_settings()
+        logger.info(f"✅ Settings loaded successfully")
+        logger.info(f"   Qdrant URL: {settings.qdrant_url}")
+        logger.info(f"   Knowledge base collection: {settings.qdrant_collection_knowledge}")
+        logger.info(f"   Products collection: {settings.qdrant_collection_products}")
+    except Exception as e:
+        logger.error(f"❌ Failed to load settings: {e}")
+        return False
+
+    # Check 2: Qdrant connection
+    try:
+        vector_db = get_vector_db()
+        if not vector_db.is_connected():
+            logger.error(f"❌ Qdrant is not connected. Check QDRANT_URL and QDRANT_API_KEY")
+            logger.error(f"   Current URL: {settings.qdrant_url}")
+            return False
+        logger.info(f"✅ Qdrant connection successful")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Qdrant: {e}")
+        return False
+
+    # Check 3: Verify embedding service
+    try:
+        ingestion_service = get_ingestion_service()
+        logger.info(f"✅ Ingestion service initialized")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize ingestion service: {e}")
+        return False
+
+    # Check 4: Verify knowledge base documents
+    if not KNOWLEDGE_BASE_DOCS:
+        logger.error(f"❌ No knowledge base documents to index")
+        return False
+    logger.info(f"✅ Found {len(KNOWLEDGE_BASE_DOCS)} knowledge base documents to index")
+
+    logger.info("="*60)
+    logger.info("✅ All pre-flight checks passed")
+    logger.info("="*60 + "\n")
+    return True
+
+
+async def validate_ingestion(collection_name: str, expected_min_count: int = 1):
+    """
+    Validate that documents were successfully indexed.
+    """
+    logger.info(f"Validating collection '{collection_name}'...")
+
+    try:
+        vector_db = get_vector_db()
+        if not vector_db.client:
+            logger.error(f"❌ Qdrant client not available for validation")
+            return False
+
+        # Get collection info
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            collection_info = vector_db.client.get_collection(collection_name)
+            points_count = collection_info.points_count
+
+        if points_count >= expected_min_count:
+            logger.info(f"✅ Collection '{collection_name}' has {points_count} points (expected >= {expected_min_count})")
+            return True
+        else:
+            logger.error(f"❌ Collection '{collection_name}' has only {points_count} points (expected >= {expected_min_count})")
+            return False
+    except Exception as e:
+        logger.error(f"❌ Failed to validate collection '{collection_name}': {e}")
+        return False
+
+
 async def populate_knowledge_base():
     """Populate the knowledge base with essential FAQs."""
+
+    # Run pre-flight checks
+    if not pre_flight_checks():
+        logger.error("\n❌ PRE-FLIGHT CHECKS FAILED - Aborting")
+        sys.exit(1)
+
     logger.info("Starting knowledge base population...")
+    logger.info(f"Indexing {len(KNOWLEDGE_BASE_DOCS)} documents...\n")
 
     ingestion_service = get_ingestion_service()
+    settings = get_settings()
 
     success_count = 0
     fail_count = 0
+    failed_docs = []
 
-    for doc in KNOWLEDGE_BASE_DOCS:
+    for i, doc in enumerate(KNOWLEDGE_BASE_DOCS, 1):
         try:
-            logger.info(f"Indexing document: {doc['doc_id']}")
+            logger.info(f"[{i}/{len(KNOWLEDGE_BASE_DOCS)}] Indexing: {doc['doc_id']}")
             success = await ingestion_service.index_knowledge_document(
                 doc_id=doc['doc_id'],
                 content=doc['content'],
@@ -282,23 +379,54 @@ async def populate_knowledge_base():
 
             if success:
                 success_count += 1
-                logger.info(f"[OK] Successfully indexed: {doc['doc_id']}")
+                logger.info(f"  ✅ Successfully indexed: {doc['doc_id']}")
             else:
                 fail_count += 1
-                logger.error(f"[FAIL] Failed to index: {doc['doc_id']}")
+                failed_docs.append(doc['doc_id'])
+                logger.error(f"  ❌ Failed to index: {doc['doc_id']}")
         except Exception as e:
             fail_count += 1
-            logger.error(f"[FAIL] Error indexing {doc['doc_id']}: {e}")
+            failed_docs.append(doc['doc_id'])
+            logger.error(f"  ❌ Error indexing {doc['doc_id']}: {e}")
 
     logger.info(f"\n{'='*60}")
-    logger.info(f"Knowledge Base Population Complete")
+    logger.info(f"INGESTION COMPLETE")
     logger.info(f"{'='*60}")
-    logger.info(f"[OK] Successfully indexed: {success_count}")
-    logger.info(f"[FAIL] Failed: {fail_count}")
+    logger.info(f"✅ Successfully indexed: {success_count}")
+    logger.info(f"❌ Failed: {fail_count}")
+    if failed_docs:
+        logger.error(f"Failed documents: {', '.join(failed_docs)}")
     logger.info(f"{'='*60}\n")
 
+    # Validate ingestion
+    logger.info("Validating ingestion...")
+    validation_passed = await validate_ingestion(
+        settings.qdrant_collection_knowledge,
+        expected_min_count=success_count
+    )
+
+    if not validation_passed:
+        logger.error("\n❌ VALIDATION FAILED - Documents not found in Qdrant")
+        sys.exit(1)
+
+    # Exit with error if any documents failed
+    if fail_count > 0:
+        logger.error(f"\n❌ INGESTION INCOMPLETE - {fail_count} documents failed")
+        sys.exit(1)
+
+    logger.info("\n✅ KNOWLEDGE BASE POPULATION SUCCESSFUL")
+    logger.info("="*60 + "\n")
     return success_count, fail_count
 
 
 if __name__ == "__main__":
-    asyncio.run(populate_knowledge_base())
+    try:
+        asyncio.run(populate_knowledge_base())
+    except KeyboardInterrupt:
+        logger.warning("\n⚠️  Ingestion interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"\n❌ FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
