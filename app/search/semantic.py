@@ -8,9 +8,11 @@ from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
-from app.core.config import settings
+from app.core.config import get_settings
 from app.services.embeddings import EmbeddingService
 from app.search.multilingual import detect_language, enhance_query
+
+settings = get_settings()
 
 logger = logging.getLogger(__name__)
 

@@ -455,9 +455,15 @@ async def sales_agent_node(state: ZaylonState) -> Dict[str, Any]:
 
 **MANDATORY TOOL USAGE**:
 
-**Product Queries** → call search_products_tool:
-- "I want a hoodie" → search_products_tool(query="hoodie")
-- "Show me blue shirts" → search_products_tool(query="blue shirt")
+**Product Queries (IMPORTANT - CHOOSE TOOL BASED ON LANGUAGE)**:
+- **For Arabic or Franco-Arabic**, ALWAYS prefer `semantic_product_search_tool` as it is better with languages.
+  - "عايز بنطلون اسود مقاس كبير" → `semantic_product_search_tool(query="عايز بنطلون اسود مقاس كبير")`
+  - "3ayez jeans azra2 size M" → `semantic_product_search_tool(query="3ayez jeans azra2 size M")`
+
+- **For English**, you can use `search_products_tool`.
+  - "I want a hoodie" → `search_products_tool(query="I want a hoodie")`
+
+Pass the user's query AS-IS. The semantic search tool handles translation and analysis.
 
 **Memory-Based Queries** → call get_customer_facts_tool FIRST, then search:
 - "Show me in my size" → get_customer_facts_tool → search_products_tool
@@ -554,11 +560,14 @@ MUST: Be direct and professional - no unnecessary explanations
 - search_products_tool(query, limit)
 - check_product_availability_tool(product_name, size, color)
 - create_order_tool(...)
-- get_order_history_tool(customer_id)
+- get_order_history_tool(customer_id="{customer_id}")
 - check_order_status_tool(order_id)
-- get_customer_facts_tool(customer_id)
-- save_customer_fact_tool(customer_id, fact_type, fact_key, fact_value, confidence, source)
-- search_knowledge_base_tool(query)"""
+- get_customer_facts_tool(customer_id="{customer_id}")
+- save_customer_fact_tool(customer_id="{customer_id}", fact_type, fact_key, fact_value, confidence, source)
+- search_knowledge_base_tool(query)
+
+**IMPORTANT**: When calling tools that require customer_id, always use: customer_id="{customer_id}"
+"""
 
     try:
         # Create agent with tools - simple binding without forcing
@@ -822,9 +831,11 @@ Examples:
 
 **Available Tools**:
 - search_knowledge_base_tool(query) - Search FAQs and policies (USE FOR ALL POLICY QUESTIONS)
-- get_order_history_tool(customer_id) - Get all customer orders (for "Where is my order?")
-- check_order_status_tool(order_id) - Check specific order by ID (only when customer provides order number)
+- get_order_history_tool(customer_id="{customer_id}") - Get all customer orders
+- check_order_status_tool(order_id) - Check specific order by ID
 - semantic_product_search_tool(query) - Search products with self-correction
+
+**IMPORTANT**: When calling get_order_history_tool, always use: customer_id="{customer_id}"
 
 Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
 

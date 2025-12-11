@@ -423,7 +423,7 @@ async def run_evaluation():
         print(f"ERROR: Golden dataset not found at {dataset_path}")
         return
 
-    df = pd.read_csv(dataset_path)
+    df = pd.read_csv(dataset_path, encoding='utf-8')
     print(f"\n[OK] Loaded {len(df)} test cases from golden dataset")
 
     # Run evaluation for each test case

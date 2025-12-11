@@ -24,6 +24,7 @@ from .memory_tools import (
 
 # Tool collections for different agents
 SALES_TOOLS = [
+    semantic_product_search_tool, # ADDED: For superior multilingual search
     search_products_tool,
     get_product_details_tool,
     check_product_availability_tool,
