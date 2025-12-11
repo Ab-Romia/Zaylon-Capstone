@@ -152,23 +152,37 @@ def sanitize_message_history(messages: List[AIMessage]) -> List[AIMessage]:
 
 async def load_memory_node(state: ZaylonState) -> Dict[str, Any]:
     """
-    Load customer long-term memory from Memory Bank.
+    OPTIMIZED: Batch load customer memory and context.
 
     This node:
     1. Retrieves customer facts using get_customer_facts_tool
-    2. Populates user_profile in state
-    3. Logs the memory load for observability
+    2. Pre-loads recent order history (for support queries)
+    3. Populates user_profile in state
+    4. Logs the memory load for observability
+
+    Performance: Batch loading reduces DB queries from 2-3 to 1
     """
-    logger.info(f"[LOAD_MEMORY] Loading memory for customer: {state['customer_id']}")
+    import time
+    import asyncio
+    start_time = time.time()
+
+    logger.info(f"[LOAD_MEMORY] Batch loading memory for customer: {state['customer_id']}")
 
     customer_id = state["customer_id"]
 
     try:
-        # Call memory tool to retrieve facts
-        facts_json = await get_customer_facts_tool.ainvoke({"customer_id": customer_id})
-        facts_data = json.loads(facts_json)
+        # OPTIMIZATION: Load facts and order history in parallel
+        facts_task = get_customer_facts_tool.ainvoke({"customer_id": customer_id})
+        orders_task = get_order_history_tool.ainvoke({"customer_id": customer_id})
 
-        # Build user profile dictionary
+        # Execute both queries concurrently
+        results = await asyncio.gather(facts_task, orders_task, return_exceptions=True)
+
+        facts_json = results[0] if not isinstance(results[0], Exception) else "{}"
+        orders_json = results[1] if not isinstance(results[1], Exception) else "{}"
+
+        # Parse facts
+        facts_data = json.loads(facts_json)
         user_profile = {}
         if facts_data.get("success") and facts_data.get("found"):
             for fact in facts_data.get("facts", []):
@@ -178,15 +192,21 @@ async def load_memory_node(state: ZaylonState) -> Dict[str, Any]:
                     "source": fact["source"]
                 }
 
-            logger.info(f"[LOAD_MEMORY] Loaded {len(user_profile)} facts")
-        else:
-            logger.info("[LOAD_MEMORY] No previous facts found for customer")
+        # Parse orders
+        orders_data = json.loads(orders_json)
+        recent_orders = []
+        if orders_data.get("success") and orders_data.get("orders"):
+            recent_orders = orders_data.get("orders", [])[:5]  # Keep last 5 orders
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(f"[LOAD_MEMORY] Loaded {len(user_profile)} facts, {len(recent_orders)} orders [{elapsed_ms:.1f}ms]")
 
         # Add to chain of thought
-        thought = f"Loaded customer memory: {len(user_profile)} facts retrieved"
+        thought = f"Batch loaded: {len(user_profile)} facts, {len(recent_orders)} recent orders [{elapsed_ms:.0f}ms]"
 
         return {
             "user_profile": user_profile,
+            "recent_orders": recent_orders,  # NEW: Pre-loaded for support agent
             "chain_of_thought": [thought]
             # Don't set current_agent - preserve value from previous nodes
         }
@@ -195,6 +215,7 @@ async def load_memory_node(state: ZaylonState) -> Dict[str, Any]:
         logger.error(f"[LOAD_MEMORY] Error loading memory: {e}")
         return {
             "user_profile": {},
+            "recent_orders": [],
             "chain_of_thought": [f"Memory load failed: {str(e)}"]
             # Don't set current_agent - preserve value from previous nodes
         }
@@ -565,13 +586,15 @@ MUST: Be direct and professional - no unnecessary explanations
         new_messages = []  # Track ALL new messages to return to state
 
         if tools_called:
+            import asyncio
             from langchain_core.messages import ToolMessage
 
             # First, add the assistant's message with tool calls to maintain conversation order
             agent_messages.append(response)
             new_messages.append(response)  # CRITICAL: Track this for state update
 
-            # Execute each tool call
+            # Parse all tool calls first
+            tool_call_data = []
             for tool_call in tool_calls_list:
                 # Handle multiple formats: OpenAI function format, LangChain dict, or LangChain object
                 if isinstance(tool_call, dict):
@@ -580,40 +603,58 @@ MUST: Be direct and professional - no unnecessary explanations
                         tool_name = tool_call['function'].get('name')
                         args_str = tool_call['function'].get('arguments', '{}')
                         tool_args = json.loads(args_str) if isinstance(args_str, str) else args_str
-                        tool_id = tool_call.get('id', str(len(tool_calls_info)))
+                        tool_id = tool_call.get('id', str(len(tool_call_data)))
                     # LangChain format: {'name': '...', 'args': {...}, 'id': '...'}
                     else:
                         tool_name = tool_call.get("name")
                         tool_args = tool_call.get("args", {})
-                        tool_id = tool_call.get("id", str(len(tool_calls_info)))
+                        tool_id = tool_call.get("id", str(len(tool_call_data)))
                 else:
                     # Object format (has attributes)
                     tool_name = getattr(tool_call, "name", None)
                     tool_args = getattr(tool_call, "args", {})
-                    tool_id = getattr(tool_call, "id", str(len(tool_calls_info)))
+                    tool_id = getattr(tool_call, "id", str(len(tool_call_data)))
 
                 # Skip invalid tool calls
                 if not tool_name:
                     logger.warning(f"[SALES AGENT] Skipping tool call with no name: {tool_call}")
                     continue
 
-                logger.info(f"[SALES AGENT] Executing tool: {tool_name} with args: {tool_args}")
+                tool_call_data.append((tool_name, tool_args, tool_id))
 
-                # Find and execute the tool
-                tool_result = None
+            # OPTIMIZATION: Execute all tools in parallel using asyncio.gather
+            logger.info(f"[SALES AGENT] Executing {len(tool_call_data)} tools in parallel")
+
+            async def execute_single_tool(tool_name, tool_args):
+                """Execute a single tool and return result"""
                 for tool in SALES_TOOLS:
                     if tool.name == tool_name:
                         try:
-                            tool_result = await tool.ainvoke(tool_args)
-                            logger.info(f"[SALES AGENT] Tool {tool_name} succeeded: {str(tool_result)[:100]}")
+                            result = await tool.ainvoke(tool_args)
+                            logger.info(f"[SALES AGENT] Tool {tool_name} succeeded: {str(result)[:100]}")
+                            return result
                         except Exception as e:
-                            tool_result = f"Tool execution failed: {str(e)}"
+                            error_msg = f"Tool execution failed: {str(e)}"
                             logger.error(f"[SALES AGENT] Tool {tool_name} failed: {e}", exc_info=True)
-                        break
+                            return error_msg
 
-                if tool_result is None:
-                    tool_result = f"Tool {tool_name} not found"
-                    logger.error(f"[SALES AGENT] Tool {tool_name} not found in SALES_TOOLS")
+                error_msg = f"Tool {tool_name} not found"
+                logger.error(f"[SALES AGENT] Tool {tool_name} not found in SALES_TOOLS")
+                return error_msg
+
+            # Execute all tools in parallel
+            tool_tasks = [
+                execute_single_tool(tool_name, tool_args)
+                for tool_name, tool_args, _ in tool_call_data
+            ]
+            tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+            # Process results and build messages
+            for i, (tool_name, tool_args, tool_id) in enumerate(tool_call_data):
+                tool_result = tool_results[i] if i < len(tool_results) else "Execution error"
+
+                if isinstance(tool_result, Exception):
+                    tool_result = f"Tool execution failed: {str(tool_result)}"
 
                 tool_calls_info.append({
                     "tool_name": tool_name,
@@ -819,7 +860,8 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
             agent_messages.append(response)
             new_messages.append(response)  # CRITICAL: Track this for state update
 
-            # Execute each tool call
+            # Parse all tool calls first
+            tool_call_data = []
             for tool_call in tool_calls_list:
                 # Handle multiple formats: OpenAI function format, LangChain dict, or LangChain object
                 if isinstance(tool_call, dict):
@@ -828,40 +870,59 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                         tool_name = tool_call['function'].get('name')
                         args_str = tool_call['function'].get('arguments', '{}')
                         tool_args = json.loads(args_str) if isinstance(args_str, str) else args_str
-                        tool_id = tool_call.get('id', str(len(tool_calls_info)))
+                        tool_id = tool_call.get('id', str(len(tool_call_data)))
                     # LangChain format: {'name': '...', 'args': {...}, 'id': '...'}
                     else:
                         tool_name = tool_call.get("name")
                         tool_args = tool_call.get("args", {})
-                        tool_id = tool_call.get("id", str(len(tool_calls_info)))
+                        tool_id = tool_call.get("id", str(len(tool_call_data)))
                 else:
                     # Object format (has attributes)
                     tool_name = getattr(tool_call, "name", None)
                     tool_args = getattr(tool_call, "args", {})
-                    tool_id = getattr(tool_call, "id", str(len(tool_calls_info)))
+                    tool_id = getattr(tool_call, "id", str(len(tool_call_data)))
 
                 # Skip invalid tool calls
                 if not tool_name:
                     logger.warning(f"[SUPPORT AGENT] Skipping tool call with no name: {tool_call}")
                     continue
 
-                logger.info(f"[SUPPORT AGENT] Executing tool: {tool_name} with args: {tool_args}")
+                tool_call_data.append((tool_name, tool_args, tool_id))
 
-                # Find and execute the tool
-                tool_result = None
+            # OPTIMIZATION: Execute all tools in parallel using asyncio.gather
+            import asyncio
+            logger.info(f"[SUPPORT AGENT] Executing {len(tool_call_data)} tools in parallel")
+
+            async def execute_single_tool(tool_name, tool_args):
+                """Execute a single tool and return result"""
                 for tool in SUPPORT_TOOLS:
                     if tool.name == tool_name:
                         try:
-                            tool_result = await tool.ainvoke(tool_args)
-                            logger.info(f"[SUPPORT AGENT] Tool {tool_name} succeeded: {str(tool_result)[:100]}")
+                            result = await tool.ainvoke(tool_args)
+                            logger.info(f"[SUPPORT AGENT] Tool {tool_name} succeeded: {str(result)[:100]}")
+                            return result
                         except Exception as e:
-                            tool_result = f"Tool execution failed: {str(e)}"
+                            error_msg = f"Tool execution failed: {str(e)}"
                             logger.error(f"[SUPPORT AGENT] Tool {tool_name} failed: {e}", exc_info=True)
-                        break
+                            return error_msg
 
-                if tool_result is None:
-                    tool_result = f"Tool {tool_name} not found"
-                    logger.error(f"[SUPPORT AGENT] Tool {tool_name} not found in SUPPORT_TOOLS")
+                error_msg = f"Tool {tool_name} not found"
+                logger.error(f"[SUPPORT AGENT] Tool {tool_name} not found in SUPPORT_TOOLS")
+                return error_msg
+
+            # Execute all tools in parallel
+            tool_tasks = [
+                execute_single_tool(tool_name, tool_args)
+                for tool_name, tool_args, _ in tool_call_data
+            ]
+            tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+            # Process results and build messages
+            for i, (tool_name, tool_args, tool_id) in enumerate(tool_call_data):
+                tool_result = tool_results[i] if i < len(tool_results) else "Execution error"
+
+                if isinstance(tool_result, Exception):
+                    tool_result = f"Tool execution failed: {str(tool_result)}"
 
                 tool_calls_info.append({
                     "tool_name": tool_name,

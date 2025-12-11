@@ -31,6 +31,9 @@ class ZaylonState(TypedDict):
     # Long-term memory (retrieved from Memory Bank)
     user_profile: Dict[str, Any]
 
+    # Recent order history (pre-loaded for performance)
+    recent_orders: List[Dict[str, Any]]
+
     # Routing decision (which node to visit next)
     next: str  # "sales", "support", or "end"
 
