@@ -1,11 +1,12 @@
 """
 LangGraph Agent Nodes
 Implements the individual nodes (functions) that make up the Zaylon agent graph.
+PHASE 3: Updated to use dynamic prompts from database (zero hard-coding).
 """
 
 import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -15,11 +16,13 @@ from app.tools import (
     SALES_TOOLS, SUPPORT_TOOLS, MEMORY_TOOLS,
     get_customer_facts_tool, save_customer_fact_tool
 )
+from app.services.prompts import get_prompt_service
 from config import get_settings
 from services.llm_factory import get_chat_llm, get_provider_name
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+prompt_service = get_prompt_service()
 
 # Initialize LLM for agents using provider factory (supports OpenAI and Gemini)
 # The provider is configured in .env via LLM_PROVIDER

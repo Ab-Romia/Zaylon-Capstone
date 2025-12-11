@@ -8,6 +8,7 @@ from app.models.conversation import Conversation
 from app.models.customer import Customer
 from app.models.cache import ResponseCache
 from app.models.analytics import AnalyticsEvent
+from app.models.prompt import PromptTemplate
 
 __all__ = [
     "Base",
@@ -17,4 +18,5 @@ __all__ = [
     "Customer",
     "ResponseCache",
     "AnalyticsEvent",
+    "PromptTemplate",
 ]
