@@ -9,6 +9,9 @@ echo "STARTUP: AI Sales Agent System"
 echo "==============================================="
 echo ""
 
+# Set Python path to include /app directory
+export PYTHONPATH=/app:$PYTHONPATH
+
 # Step 1: Populate knowledge base
 echo "Step 1: Populating knowledge base..."
 python scripts/populate_knowledge_base.py
