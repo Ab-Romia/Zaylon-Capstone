@@ -1,6 +1,7 @@
 """
 RAG (Retrieval-Augmented Generation) orchestration service.
 Combines semantic search with keyword matching for optimal DM assistant responses.
+PHASE 2: Enhanced with multilingual semantic search and query enhancement.
 """
 import logging
 from typing import List, Dict, Any, Optional, Tuple
@@ -12,6 +13,8 @@ from app.core.config import get_settings
 from app.services.embeddings import get_embedding_service
 from app.services.vector_db import get_vector_db
 from app.services.products import extract_product_keywords, extract_size, detect_language
+from app.search.semantic import get_semantic_search_engine
+from app.search.multilingual import enhance_query, detect_language as detect_lang_v2
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -240,58 +243,104 @@ class RAGService:
         self,
         query: str,
         limit: int = 3,
-        category: Optional[str] = None
+        category: Optional[str] = None,
+        use_enhanced_search: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Search knowledge base for relevant information.
+        PHASE 2: Enhanced with multilingual support and query enhancement.
 
         Args:
-            query: User query
+            query: User query in any language
             limit: Maximum number of results
             category: Optional category filter
+            use_enhanced_search: If True, use new semantic search engine with multilingual support
 
         Returns:
             List of relevant knowledge base entries
         """
         try:
-            if not self.vector_db.is_connected():
-                logger.warning("Vector DB not connected")
-                return []
+            if use_enhanced_search:
+                # PHASE 2: Use new semantic search engine with multilingual support
+                semantic_engine = get_semantic_search_engine()
 
-            # Generate query embedding
-            query_embedding = await self.embedding_service.embed_text(query)
+                # Detect language and enhance query
+                language = detect_lang_v2(query)
+                logger.info(f"Knowledge base search - language: {language}, query: '{query}'")
 
-            # Build filter if category provided
-            filter_conditions = {}
-            if category:
-                filter_conditions["category"] = category
+                # Build filters
+                filters = {}
+                if category:
+                    filters["category"] = category
 
-            # Search vector database
-            results = await self.vector_db.search(
-                collection_name=self.settings.qdrant_collection_knowledge,
-                query_vector=query_embedding,
-                limit=limit,
-                score_threshold=self.settings.rag_similarity_threshold,
-                filter_conditions=filter_conditions
-            )
+                # Perform semantic search on knowledge base
+                results = await semantic_engine.search_knowledge_base(
+                    query=query,
+                    limit=limit,
+                    enhance_multilingual=True,
+                    score_threshold=self.settings.rag_similarity_threshold
+                )
 
-            # Format results
-            knowledge_items = []
-            for result in results:
-                payload = result["payload"]
-                knowledge_items.append({
-                    "doc_id": payload.get("doc_id"),
-                    "content": payload.get("content"),
-                    "category": payload.get("category"),
-                    "title": payload.get("title"),
-                    "similarity_score": result["score"]
-                })
+                # Convert SearchResult to knowledge item format
+                knowledge_items = []
+                for result in results:
+                    payload = result.payload
+                    knowledge_items.append({
+                        "doc_id": payload.get("doc_id"),
+                        "content": payload.get("content"),
+                        "category": payload.get("category"),
+                        "title": payload.get("title"),
+                        "similarity_score": result.score,
+                        "language": language,
+                        "matched_fields": result.matched_fields
+                    })
 
-            logger.info(f"Knowledge base search found {len(knowledge_items)} items")
-            return knowledge_items
+                logger.info(
+                    f"Enhanced knowledge base search found {len(knowledge_items)} items "
+                    f"(language: {language}, threshold: {self.settings.rag_similarity_threshold})"
+                )
+                return knowledge_items
+
+            else:
+                # Fallback to old implementation
+                if not self.vector_db.is_connected():
+                    logger.warning("Vector DB not connected")
+                    return []
+
+                # Generate query embedding
+                query_embedding = await self.embedding_service.embed_text(query)
+
+                # Build filter if category provided
+                filter_conditions = {}
+                if category:
+                    filter_conditions["category"] = category
+
+                # Search vector database
+                results = await self.vector_db.search(
+                    collection_name=self.settings.qdrant_collection_knowledge,
+                    query_vector=query_embedding,
+                    limit=limit,
+                    score_threshold=self.settings.rag_similarity_threshold,
+                    filter_conditions=filter_conditions
+                )
+
+                # Format results
+                knowledge_items = []
+                for result in results:
+                    payload = result["payload"]
+                    knowledge_items.append({
+                        "doc_id": payload.get("doc_id"),
+                        "content": payload.get("content"),
+                        "category": payload.get("category"),
+                        "title": payload.get("title"),
+                        "similarity_score": result["score"]
+                    })
+
+                logger.info(f"Knowledge base search found {len(knowledge_items)} items")
+                return knowledge_items
 
         except Exception as e:
-            logger.error(f"Knowledge base search failed: {e}")
+            logger.error(f"Knowledge base search failed: {e}", exc_info=True)
             return []
 
     def format_products_for_ai(self, products: List[Dict[str, Any]]) -> str:
