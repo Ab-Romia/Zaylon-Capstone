@@ -221,8 +221,15 @@ class IngestionService:
                 if doc.tags:
                     metadata["tags"] = doc.tags
                 if doc.metadata:
-                    # Merge existing metadata
-                    metadata.update(doc.metadata)
+                    # Merge existing metadata (JSONB field - might be dict or string)
+                    try:
+                        if isinstance(doc.metadata, dict):
+                            metadata.update(doc.metadata)
+                        elif isinstance(doc.metadata, str):
+                            import json
+                            metadata.update(json.loads(doc.metadata))
+                    except Exception as e:
+                        logger.warning(f"Could not parse metadata for {doc.doc_id}: {e}")
 
                 # Index the document
                 success = await self.index_knowledge_document(
