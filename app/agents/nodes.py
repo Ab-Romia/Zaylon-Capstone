@@ -14,7 +14,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.agents.state import ZaylonState, AgentType, update_state
 from app.tools import (
     SALES_TOOLS, SUPPORT_TOOLS, MEMORY_TOOLS,
-    get_customer_facts_tool, save_customer_fact_tool
+    get_customer_facts_tool, save_customer_fact_tool,
+    get_order_history_tool
 )
 from app.services.prompts import get_prompt_service
 from config import get_settings
