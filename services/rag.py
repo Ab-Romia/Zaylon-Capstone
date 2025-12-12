@@ -270,7 +270,7 @@ class RAGService:
             if category:
                 filter_conditions["category"] = category
 
-            # Search vector database
+            # First attempt: Use configured threshold (0.35)
             results = await self.vector_db.search(
                 collection_name=self.settings.qdrant_collection_knowledge,
                 query_vector=query_embedding,
@@ -278,6 +278,17 @@ class RAGService:
                 score_threshold=self.settings.rag_similarity_threshold,
                 filter_conditions=filter_conditions
             )
+
+            # FALLBACK: If no results, try with lower threshold (0.25) for better recall
+            if not results:
+                logger.info(f"No results with threshold {self.settings.rag_similarity_threshold}, trying with 0.25")
+                results = await self.vector_db.search(
+                    collection_name=self.settings.qdrant_collection_knowledge,
+                    query_vector=query_embedding,
+                    limit=limit,
+                    score_threshold=0.25,  # Even lower for knowledge base
+                    filter_conditions=filter_conditions
+                )
 
             # Format results
             knowledge_items = []
@@ -291,7 +302,7 @@ class RAGService:
                     "similarity_score": result["score"]
                 })
 
-            logger.info(f"Knowledge base search found {len(knowledge_items)} items")
+            logger.info(f"Knowledge base search found {len(knowledge_items)} items (scores: {[item['similarity_score'] for item in knowledge_items]})")
             return knowledge_items
 
         except Exception as e:
