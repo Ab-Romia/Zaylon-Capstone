@@ -142,6 +142,13 @@ async def search_products(
     detected_language = detect_language(query)
     query_lower = query.lower()
 
+    # Extract keywords (needed for metadata even in broad queries)
+    product_keywords, color_keywords = extract_product_keywords(query)
+    size = extract_size(query)
+    all_keywords = list(product_keywords) + list(color_keywords)
+    if size:
+        all_keywords.append(size)
+
     # Check for broad category queries first
     is_broad_query = any(cat in query_lower for cat in BROAD_CATEGORIES)
 
@@ -157,14 +164,6 @@ async def search_products(
         result = await db.execute(stmt)
         products = result.scalars().all()
     else:
-        # Extract keywords
-        product_keywords, color_keywords = extract_product_keywords(query)
-        size = extract_size(query)
-
-        all_keywords = list(product_keywords) + list(color_keywords)
-        if size:
-            all_keywords.append(size)
-
         logger.info(f"Detected language: {detected_language}, keywords: {all_keywords}")
 
         # Build database query with enhanced matching
