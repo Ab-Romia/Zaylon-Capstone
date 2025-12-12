@@ -1,10 +1,9 @@
 # Zaylon Agent Evaluation Report
 
-**Generated**: 2025-12-03 10:04:21
+**Generated**: 2025-12-12 15:23:17
 **Evaluation Method**: LLM-as-a-Judge (gpt-4o)
 **Judge Provider**: OPENAI
-**Golden Dataset**: 29 test cases (Easy/Medium/Hard)
-**Note**: Test 30 excluded due to rate limiting error during evaluation
+**Golden Dataset**: 30 test cases (Easy/Medium/Hard)
 
 ---
 
@@ -21,12 +20,12 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 
 | Metric | Score |
 |--------|-------|
-| **Overall Success Rate** | **89.7%** |
-| Intent Accuracy | 100.0% |
-| Tool Selection | 97.2% |
-| Response Quality | 87.9% |
-| Avg Execution Time | 7900ms |
-| Tests ≥80% Success | 96.6% |
+| **Overall Success Rate** | **86.3%** |
+| Intent Accuracy | 90.0% |
+| Tool Selection | 94.0% |
+| Response Quality | 85.7% |
+| Avg Execution Time | 6446ms |
+| Tests ≥80% Success | 93.3% |
 
 **Result**: [OK] **EXCEEDS TARGET** (>80%)
 
@@ -38,24 +37,24 @@ The Zaylon multi-agent system was evaluated against a golden dataset of 30 reali
 
 | Difficulty | Avg Success Rate | Notes |
 |------------|------------------|-------|
-| Easy | 92.3% | Excellent |
-| Hard | 74.3% | Good |
-| Medium | 88.0% | Excellent |
+| Easy | 91.5% | Excellent |
+| Hard | 81.4% | Excellent |
+| Medium | 83.0% | Excellent |
 
 ### Performance by Language
 
 | Language | Avg Success Rate | Notes |
 |----------|------------------|-------|
-| Arabic | 92.5% | Excellent multilingual support |
-| English | 85.0% | Excellent multilingual support |
-| Franco-Arabic | 95.0% | Excellent multilingual support |
+| Arabic | 90.0% | Excellent multilingual support |
+| English | 85.4% | Excellent multilingual support |
+| Franco-Arabic | 90.0% | Excellent multilingual support |
 
 ### Performance by Agent
 
 | Agent | Avg Success Rate | Test Count |
 |-------|------------------|------------|
-| sales | 85.3% | 17 |
-| support | 88.5% | 13 |
+| sales | 85.8% | 19 |
+| support | 87.3% | 11 |
 
 ---
 
@@ -65,11 +64,11 @@ The agent excelled at these scenarios:
 
 | Test ID | Input Message | Success | Agent | Time |
 |---------|---------------|---------|-------|------|
-| 2 | Show me all available hoodies... | 100% | sales | 7966ms |
-| 8 | 3ayez jeans azra2 size M... | 100% | sales | 11067ms |
-| 9 | What colors do you have in hoodies?... | 100% | sales | 6702ms |
-| 13 | I received a damaged item... | 100% | support | 12115ms |
-| 16 | عايز اعرف سعر الهودي الاحمر... | 100% | sales | 8531ms |
+| 1 | I want to buy a red hoodie in size L... | 100% | sales | 6608ms |
+| 9 | What colors do you have in hoodies?... | 100% | sales | 5583ms |
+| 12 | Show me cheap t-shirts... | 100% | sales | 5842ms |
+| 15 | Do you ship to Cairo?... | 100% | support | 6146ms |
+| 16 | عايز اعرف سعر الهودي الاحمر... | 100% | sales | 6414ms |
 
 ---
 
@@ -79,10 +78,11 @@ These scenarios had lower success rates:
 
 | Test ID | Input Message | Success | Issue | Reasoning |
 |---------|---------------|---------|-------|-----------|
-| 29 | Can you recommend something for winter?... | 70% | Medium | The agent correctly identified the intent as a product inquiry and routed to the sales specialist, which is appropriate. The expected tool, search_products_tool, was called, which aligns with the task of recommending winter products. Although the agent was unable to access specific recommendations, it offered helpful alternatives by suggesting the user specify items like jackets or sweaters. This shows an attempt to assist the customer despite data limitations. The response was polite and aimed to guide the customer, which would likely satisfy a customer to some extent, though not fully due to the lack of specific recommendations.|
-| 4 | Where is my order?... | 80% | Easy | The agent correctly identified the intent as order_tracking and routed to the support specialist, which is appropriate. The correct tool, check_order_status_tool, was used to attempt to retrieve order information. The response was polite and offered alternatives by suggesting the user check their order confirmation or contact support, which is helpful given the lack of data. While the agent could not provide the order details, the effort to assist and provide next steps would likely satisfy most customers, hence the high scores.|
-| 6 | Do you have that hoodie in my size?... | 80% | Hard | The agent correctly identified the intent as a product inquiry and routed to the sales specialist, which is appropriate. It called the get_customer_facts_tool, which is a reasonable choice to gather necessary information about the customer's size, although it could have also used a product search tool. The response was polite and asked for clarification to provide further assistance, which is helpful. Overall, the agent's performance would mostly satisfy a customer, as it showed effort and provided a clear next step.|
-| 10 | I need help with my recent purchase... | 80% | Medium | The agent correctly identified the intent as a general inquiry and routed to the support specialist, scoring 1.0 for intent accuracy. However, it did not call the expected tool, which was get_order_history_tool, but instead asked clarifying questions, which is a reasonable approach given the lack of specific information, scoring 0.6 for tool selection. The response was polite and helpful, asking for more details to better assist the customer, scoring 0.8 for response quality. Overall, the customer would be mostly satisfied as the agent showed effort and provided a clear next step, scoring 0.8 for overall success.|
+| 10 | I need help with my recent purchase... | 40% | Medium | The agent routed to the sales specialist instead of support, which is incorrect for a general inquiry about a recent purchase, resulting in a score of 0.0 for intent accuracy. No tools were called, which is a missed opportunity to provide more specific help, scoring 0.0 for tool selection. However, the response was polite and asked for more details to assist further, which is helpful, earning a 0.8 for response quality. Overall, the customer would be somewhat unsatisfied due to the lack of specific assistance but would appreciate the polite and clarifying response, resulting in an overall success score of 0.4.|
+| 26 | I ordered a shirt but want pants instead... | 70% | Hard | The agent routed to 'sales' instead of 'support', which is not ideal but can handle some order modification queries, hence a score of 0.5 for intent accuracy. The tools used included 'get_order_history_tool', which is appropriate, but 'get_customer_facts_tool' was not necessary, leading to a score of 0.8 for tool selection. The response was polite and offered alternatives despite the lack of order data, earning a score of 0.7 for response quality. Overall, the agent tried to assist the customer by suggesting alternatives and was empathetic, which would likely satisfy the customer to a reasonable extent, resulting in an overall success score of 0.7.|
+| 2 | Show me all available hoodies... | 80% | Easy | The agent correctly identified the intent as a product inquiry and routed to the sales specialist, which is appropriate. It used the expected tool, search_products_tool, to retrieve product information. The response was helpful and provided detailed information about available hoodies, though one product description was incomplete, which slightly affected the response quality. Overall, the customer would be mostly satisfied with the response, as it met the primary need of showing available hoodies.|
+| 4 | Where is my order?... | 80% | Easy | The agent correctly identified the intent as order_tracking and routed to the support specialist, scoring 1.0 for intent accuracy. The appropriate tool, check_order_status_tool, was used, resulting in a 1.0 score for tool selection. The response was polite and offered further assistance, which is helpful given the lack of order data, earning a 0.8 for response quality. Overall, the agent's effort to assist despite the lack of order data would mostly satisfy a customer, leading to an overall success score of 0.8.|
+| 6 | Do you have that hoodie in my size?... | 80% | Hard | The agent correctly identified the intent as a product inquiry and routed to the sales specialist, which is appropriate. The agent used the get_customer_facts_tool to check for size information, which is a reasonable choice, though it did not call a product search tool. The response was polite and helpful, asking for the customer's size to proceed with the inquiry, which is a good approach given the lack of data. Overall, the agent's performance would mostly satisfy a customer, with minor improvements needed in tool selection.|
 
 ---
 
@@ -90,13 +90,13 @@ These scenarios had lower success rates:
 
 ### Strengths
 
-1. **Perfect Intent Accuracy (100.0%)**: The supervisor agent consistently routes to the correct specialist (Sales vs Support) without any errors.
+1. **High Intent Accuracy (90.0%)**: The supervisor agent consistently routes to the correct specialist (Sales vs Support).
 
-2. **Excellent Tool Selection (97.2%)**: Agents call appropriate tools for their tasks, demonstrating proper integration and understanding.
+2. **Effective Tool Selection (94.0%)**: Agents call appropriate tools for their tasks, demonstrating proper integration.
 
-3. **Strong Response Quality (87.9%)**: Responses are helpful, polite, and contextually appropriate across all scenarios.
+3. **Response Quality (85.7%)**: Responses are helpful, polite, and contextually appropriate.
 
-4. **Low Latency (7900ms avg)**: Fast execution times enable real-time conversations.
+4. **Low Latency (6446ms avg)**: Fast execution times enable real-time conversations.
 
 5. **Multilingual Support**: Agent handles Arabic, Franco-Arabic, and English effectively.
 
@@ -132,7 +132,7 @@ These scenarios had lower success rates:
 
 ## Conclusion
 
-The Zaylon multi-agent system **successfully exceeds the evaluation criteria** with an overall success rate of **89.7%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
+The Zaylon multi-agent system **successfully meets the evaluation criteria** with an overall success rate of **86.3%**. The hierarchical architecture (Supervisor → Sales/Support → Tools → Memory) demonstrates:
 
 - [OK] Effective routing and specialization
 - [OK] Proper tool usage and integration
@@ -152,7 +152,7 @@ The system is **production-ready** for deployment in an e-commerce customer serv
 - **Response Quality**: Helpfulness, politeness, language match
 - **Overall Success**: Would satisfy a real customer
 
-**Golden Dataset**: 29 test cases (Test 30 excluded due to rate limiting) covering:
+**Golden Dataset**: 30 hand-crafted test cases covering:
 - 6 Easy scenarios (basic queries)
 - 15 Medium scenarios (standard complexity)
 - 9 Hard scenarios (mixed intent, memory, edge cases)

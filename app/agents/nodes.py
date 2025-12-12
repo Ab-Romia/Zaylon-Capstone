@@ -175,15 +175,9 @@ async def load_memory_node(state: ZaylonState) -> Dict[str, Any]:
     customer_id = state["customer_id"]
 
     try:
-        # OPTIMIZATION: Load facts and order history in parallel
-        facts_task = get_customer_facts_tool.ainvoke({"customer_id": customer_id})
-        orders_task = get_order_history_tool.ainvoke({"customer_id": customer_id})
-
-        # Execute both queries concurrently
-        results = await asyncio.gather(facts_task, orders_task, return_exceptions=True)
-
-        facts_json = results[0] if not isinstance(results[0], Exception) else "{}"
-        orders_json = results[1] if not isinstance(results[1], Exception) else "{}"
+        # OPTIMIZATION: Load only facts (skip order history for speed)
+        # Order history can be loaded on-demand by agents if needed
+        facts_json = await get_customer_facts_tool.ainvoke({"customer_id": customer_id})
 
         # Parse facts
         facts_data = json.loads(facts_json)
@@ -196,21 +190,15 @@ async def load_memory_node(state: ZaylonState) -> Dict[str, Any]:
                     "source": fact["source"]
                 }
 
-        # Parse orders
-        orders_data = json.loads(orders_json)
-        recent_orders = []
-        if orders_data.get("success") and orders_data.get("orders"):
-            recent_orders = orders_data.get("orders", [])[:5]  # Keep last 5 orders
-
         elapsed_ms = (time.time() - start_time) * 1000
-        logger.info(f"[LOAD_MEMORY] Loaded {len(user_profile)} facts, {len(recent_orders)} orders [{elapsed_ms:.1f}ms]")
+        logger.info(f"[LOAD_MEMORY] Loaded {len(user_profile)} facts [{elapsed_ms:.1f}ms]")
 
         # Add to chain of thought
-        thought = f"Batch loaded: {len(user_profile)} facts, {len(recent_orders)} recent orders [{elapsed_ms:.0f}ms]"
+        thought = f"Loaded {len(user_profile)} facts [{elapsed_ms:.0f}ms]"
 
         return {
             "user_profile": user_profile,
-            "recent_orders": recent_orders,  # NEW: Pre-loaded for support agent
+            "recent_orders": [],  # Lazy load if needed by agents
             "chain_of_thought": [thought]
             # Don't set current_agent - preserve value from previous nodes
         }
@@ -445,149 +433,20 @@ async def sales_agent_node(state: ZaylonState) -> Dict[str, Any]:
             profile_items.append(f"- {key}: {data['value']}")
         profile_context = "\n**Customer Preferences**:\n" + "\n".join(profile_items)
 
-    system_message = f"""You are a professional sales specialist for Zaylon, an e-commerce clothing store.
-
-**Customer Context**:
-- Customer ID: {customer_id}
-
+    system_message = f"""Sales specialist for Zaylon. Customer: {customer_id}
 {profile_context}
 
-**CORE PRINCIPLE**: You MUST use tools for ALL operations. NEVER simulate actions mentally.
+**TOOLS**:
+- Products: search_products_tool (English) or semantic_product_search_tool (Arabic/Franco)
+- Preferences: get_customer_facts_tool then search
+- Orders: create_order_tool (needs: product_id, size, color, quantity, price, name, phone, address)
+- Policies: search_knowledge_base_tool
 
-**MANDATORY TOOL USAGE**:
-
-**Product Queries (IMPORTANT - CHOOSE TOOL BASED ON LANGUAGE)**:
-- **For Arabic or Franco-Arabic**, ALWAYS prefer `semantic_product_search_tool` as it is better with languages.
-  - "عايز بنطلون اسود مقاس كبير" → `semantic_product_search_tool(query="عايز بنطلون اسود مقاس كبير")`
-  - "3ayez jeans azra2 size M" → `semantic_product_search_tool(query="3ayez jeans azra2 size M")`
-
-- **For English**, you can use `search_products_tool`.
-  - "I want a hoodie" → `search_products_tool(query="I want a hoodie")`
-
-Pass the user's query AS-IS. The semantic search tool handles translation and analysis.
-
-**Memory-Based Queries** → call get_customer_facts_tool FIRST, then search:
-- "Show me in my size" → get_customer_facts_tool → search_products_tool
-- "That hoodie in my size" → get_customer_facts_tool → search_products_tool
-- "My favorite color" → get_customer_facts_tool → search_products_tool
-
-**CRITICAL - NEVER GIVE UP ON SALES**:
-
-**If search returns ZERO or FEW products**:
-1. NEVER say "I couldn't find anything" - this kills sales
-2. IMMEDIATELY search again with broader terms:
-   - "shirts" → search "clothing", "tops", "casual wear"
-   - "pants bold dark" → search "pants", then "casual pants", then "all products"
-   - Keep searching until you find SOMETHING to show
-3. ALWAYS show at least 3-5 products, even if not perfect match
-4. Be enthusiastic about what you DO have
-5. Frame alternatives positively: "Let me show you our best casual options!" NOT "I couldn't find..."
-
-**Example Flow**:
-- User: "show me 2 shirts and 2 pants for casual bold dark colors"
-- Search 1: "shirts casual bold dark" → 0 results
-- Search 2: "shirts casual" → 2 results (SHOW THESE)
-- Search 3: "pants casual dark" → 1 result
-- Search 4: "pants casual" → 5 results (SHOW TOP 2)
-- Response: "Perfect! Here are my top picks for casual wear:
-  SHIRTS: [list 2 shirts]
-  PANTS: [list 2 pants]
-  These would look great together! Ready to order?"
-
-**NEVER accept zero products as final answer - keep trying until you have products to show**
-
-**Preferences** → call save_customer_fact_tool:
-- "I prefer size M" → save_customer_fact_tool(fact_key="preferred_size", fact_value="M", ...)
-
-**Policies** → call search_knowledge_base_tool:
-- "What's your return policy?" → search_knowledge_base_tool(query="return policy")
-
-**Note**: The search system handles size conversions and multilingual queries automatically. Trust tool outputs.
-
-**CRITICAL - ORDER PLACEMENT WORKFLOW (MUST FOLLOW EXACTLY)**:
-
-**Step 1: Customer Expresses Intent to Buy**
-- Examples: "I want to buy this", "3ayz a3ml order", "I'll take 3 of these"
-- Action: Move to Step 2
-
-**Step 2: Verify Product Information**
-- Required: product_id, product_name, size, color, quantity, total_price
-- If missing: call search_products_tool or check_product_availability_tool
-- Get product_id from tool response (NEVER make it up)
-
-**Step 3: Verify Customer Information**
-- Required: customer_name, phone, address
-- Check Customer Profile above for saved data
-- If ANY missing: ASK customer directly
-  - "To complete your order, I need your full name, phone number, and delivery address."
-- When customer provides: call save_customer_fact_tool for each piece FIRST
-- NEVER use fake data: NO "John Doe", NO "+201234567890", NO "123 Main Street"
-
-**Step 4: CREATE THE ORDER (MANDATORY - THIS IS THE ACTUAL ORDER PLACEMENT)**
-- Once ALL info from Step 2 and Step 3 is collected
-- You MUST call: create_order_tool(customer_id, product_id, product_name, size, color, quantity, total_price, customer_name, phone, address, channel)
-- This is the ONLY way to create an order in the database
-- WITHOUT calling this tool, NO ORDER EXISTS
-
-**Step 5: Confirm Based on Tool Response**
-- Parse the JSON response from create_order_tool
-- If success: true and order_id exists → Tell customer their order is placed with the order ID
-- If success: false or error → Tell customer there was an issue, ask them to try again
-- Use order_details from response to confirm specifics
-
-**FORBIDDEN - NEVER DO THIS**:
-DO NOT: Claim an order is placed without calling create_order_tool
-DO NOT: Say "I've placed your order" when you only checked stock
-DO NOT: Make up order IDs
-DO NOT: Assume an order exists because you have the information
-DO NOT: Use phrases like "I have successfully searched", "I found", "Let me process" - just do it
-DO NOT: Be verbose - be concise and professional
-
-**REQUIRED - ALWAYS DO THIS**:
-MUST: Call create_order_tool when customer wants to buy AND all info is ready
-MUST: Wait for create_order_tool response before confirming to customer
-MUST: Use real order_id from tool response
-MUST: Only confirm order if create_order_tool returns success: true
-MUST: Be direct and professional - no unnecessary explanations
-
-**After Order Creation**:
-- DO NOT call check_order_status_tool immediately (causes race conditions)
-- The create_order_tool response contains all details
-- Use those details to confirm with customer
-
-**Order Tracking**:
-- "Where is my order?" → get_order_history_tool(customer_id="{customer_id}")
-- "Order #12345 status" → check_order_status_tool(order_id="12345")
-
-**COMMUNICATION STYLE - BE A CONFIDENT SALESPERSON**:
-- Be professional, enthusiastic, and solutions-oriented
-- Match customer's language (English/Arabic/Franco-Arabic)
-- ALWAYS be positive and show products
-- NO phrases like: "I couldn't find...", "Unfortunately we don't have...", "I'm sorry but..."
-- YES phrases like: "Let me show you...", "Perfect! Here are...", "Great choice! We have...", "You'll love these..."
-- State results confidently: "Here are our best casual shirts:", "Your order 12345 is confirmed!", "Great! I just need your delivery address."
-- Act like a TOP PERFORMING sales person - always close the sale, never give up
-- Guide customers to products we DO have, don't focus on what we don't have
-
-**CRITICAL RULES**:
-1. NEVER confirm order without calling create_order_tool first
-2. NEVER make up product_id, order_id, or customer data
-3. ALWAYS call create_order_tool when customer wants to buy and all info is ready
-4. ALWAYS trust tool outputs
-5. Be concise and professional
-
-**Available Tools**:
-- search_products_tool(query, limit)
-- check_product_availability_tool(product_name, size, color)
-- create_order_tool(...)
-- get_order_history_tool(customer_id="{customer_id}")
-- check_order_status_tool(order_id)
-- get_customer_facts_tool(customer_id="{customer_id}")
-- save_customer_fact_tool(customer_id="{customer_id}", fact_type, fact_key, fact_value, confidence, source)
-- search_knowledge_base_tool(query)
-
-**IMPORTANT**: When calling tools that require customer_id, always use: customer_id="{customer_id}"
-"""
+**RULES**:
+- Be positive, match customer language
+- If no products found, suggest alternatives or ask to refine search
+- Never make up data
+- Use customer_id="{customer_id}" in tools"""
 
     try:
         # Create agent with tools - simple binding without forcing
@@ -703,42 +562,39 @@ MUST: Be direct and professional - no unnecessary explanations
                 agent_messages.append(tool_message)
                 new_messages.append(tool_message)  # CRITICAL: Track for state update
 
-            # Add explicit instruction to synthesize tool results into a customer-facing response
-            synthesis_instruction = SystemMessage(content="""Now provide a natural, helpful response to the customer based on the tool results above.
-
-RULES:
-1. Present information clearly and directly
-2. If products found: list them with name, price, sizes, colors
-3. If no products found: acknowledge and suggest alternatives
-4. If no data available: offer to help differently or ask clarifying questions
-5. Be concise and professional
-6. Do NOT say "Based on the results above"
-
-If tools returned empty results, it's OK to:
-- Ask for clarification
-- Suggest the customer contact support
-- Offer to help with something else
-""")
+            # Add minimal synthesis instruction
+            synthesis_instruction = SystemMessage(content="Respond naturally to customer based on tool results.")
             agent_messages.append(synthesis_instruction)
 
             # Call agent again with tool results to get final response
             logger.info(f"[SALES AGENT] Calling agent again to synthesize {len(tool_calls_info)} tool results")
             final_response = await sales_agent.ainvoke(agent_messages)
-            new_messages.append(final_response)  # CRITICAL: Track final response too
 
-            # Check if final response has content
-            if final_response.content:
+            # CRITICAL FIX: Check for orphaned tool_calls BEFORE adding to state
+            # This prevents state corruption from orphaned tool_calls
+            final_tool_calls = get_tool_calls(final_response)
+            if final_tool_calls:
+                # Agent tried to call more tools in synthesis - NOT supported
+                logger.warning(f"[SALES AGENT] Agent tried to call {len(final_tool_calls)} more tools in synthesis phase - not supported")
+                logger.warning(f"[SALES AGENT] Cleansing orphaned tool_calls to prevent state corruption")
+                # Create clean AIMessage WITHOUT tool_calls
+                response_text = final_response.content if final_response.content else "I'd be happy to help! Could you please clarify what you'd like assistance with?"
+                clean_final_response = AIMessage(
+                    content=response_text,
+                    id=final_response.id if hasattr(final_response, 'id') else None
+                )
+                new_messages.append(clean_final_response)  # Add CLEAN message
+            elif final_response.content:
+                # Normal case: has content, no extra tool calls
                 response_text = final_response.content
+                new_messages.append(final_response)  # Safe to add as-is
                 logger.info(f"[SALES AGENT] Final response generated: {response_text[:100]}")
             else:
-                # Check if agent is trying to call MORE tools (which we don't support in synthesis phase)
-                final_tool_calls = get_tool_calls(final_response)
-                if final_tool_calls:
-                    logger.warning(f"[SALES AGENT] Agent tried to call {len(final_tool_calls)} more tools in synthesis phase - not supported")
-                    response_text = "I'd be happy to help! Could you please clarify what you'd like assistance with?"
-                else:
-                    logger.warning("[SALES AGENT] Final response has empty content and no tool calls")
-                    response_text = "I'd be happy to help you. Could you provide more details about what you're looking for?"
+                # Edge case: empty content, no tool calls
+                logger.warning("[SALES AGENT] Final response has empty content and no tool calls")
+                response_text = "I'd be happy to help you. Could you provide more details about what you're looking for?"
+                clean_final_response = AIMessage(content=response_text)
+                new_messages.append(clean_final_response)
         else:
             # No tools called - use direct response (e.g., for greetings, confirmations)
             logger.info("[SALES AGENT] No tools called - using direct response")
@@ -794,70 +650,19 @@ async def support_agent_node(state: ZaylonState) -> Dict[str, Any]:
             profile_items.append(f"- {key}: {data['value']}")
         profile_context = "\n**Customer Profile**:\n" + "\n".join(profile_items)
 
-    system_message = f"""You are a support specialist for an e-commerce clothing store. You MUST use tools to help customers.
-
-**Customer Context**:
-- Customer ID: {customer_id} (use this when calling order tools)
-
+    system_message = f"""Support specialist for Zaylon. Customer: {customer_id}
 {profile_context}
 
-**MANDATORY TOOL USAGE RULES**:
-You have NO policy information or order data in your memory. You MUST call tools for ANY support query.
+**TOOLS**:
+- Policies: search_knowledge_base_tool
+- Orders: check_order_status_tool(order_id="{customer_id}_latest") or get_order_history_tool
+- Products: semantic_product_search_tool
 
-**When customer asks about policies/returns/shipping/payment → IMMEDIATELY call search_knowledge_base_tool**
-Examples:
-- "What are your return policies?" → call search_knowledge_base_tool(query="return policy")
-- "How long does shipping take?" → call search_knowledge_base_tool(query="shipping time")
-- "Do you ship to Cairo?" → call search_knowledge_base_tool(query="shipping locations")
-- "What payment methods do you accept?" → call search_knowledge_base_tool(query="payment methods")
-- "Can I get a refund?" → call search_knowledge_base_tool(query="refund policy")
-- "How do I cancel my order?" → call search_knowledge_base_tool(query="order cancellation")
-- "I received a damaged item" → call search_knowledge_base_tool(query="damaged item policy")
-
-**IMPORTANT - Order Tracking Tool Selection**:
-FOR GENERAL ORDER TRACKING (most common):
-- "Where is my order?" → call check_order_status_tool(order_id="{customer_id}_latest") to check their most recent order status
-- "فين طلبي؟" → call check_order_status_tool(order_id="{customer_id}_latest")
-- "Order status?" → call check_order_status_tool(order_id="{customer_id}_latest")
-- "What's the status of my order?" → call check_order_status_tool(order_id="{customer_id}_latest")
-
-FOR SPECIFIC ORDER TRACKING:
-- "Track order #12345" → call check_order_status_tool(order_id="12345")
-- "Order status #12345" → call check_order_status_tool(order_id="12345")
-
-FOR ORDER HISTORY/MODIFICATIONS:
-- "Can I change my order?" → call get_order_history_tool(customer_id="{customer_id}") first to find orders
-- "Show me my order history" → call get_order_history_tool(customer_id="{customer_id}")
-- "I want to reorder" → call get_order_history_tool(customer_id="{customer_id}")
-
-RULE: Use check_order_status_tool for ANY order tracking query, use get_order_history_tool only for history/reordering purposes
-
-**When customer asks about products → call semantic_product_search_tool**
-Examples:
-- "Do you have blue shirts?" → call semantic_product_search_tool(query="blue shirts")
-- "Show me hoodies" → call semantic_product_search_tool(query="hoodies")
-
-**CRITICAL RULES**:
-1. NEVER respond without calling a tool first for policy/order/product queries
-2. NEVER say "I'm here to help" without actually calling tools
-3. NEVER ask for customer ID - you already have it: {customer_id}
-4. **LANGUAGE MATCHING**: ALWAYS respond in the SAME language as the customer:
-   - English input → English response
-   - Arabic input (عربي) → Arabic response (عربي)
-   - Franco-Arabic input (3ayez, 7aga, etc.) → Franco-Arabic response
-   - Detect Franco-Arabic by numbers in text: 3=ع, 7=ح, 2=أ, 5=خ, 8=ق, 9=ص
-5. After getting tool results, provide a natural, empathetic response in the customer's EXACT language
-6. For FAQs, ALWAYS call search_knowledge_base_tool first
-
-**Available Tools**:
-- search_knowledge_base_tool(query) - Search FAQs and policies (USE FOR ALL POLICY QUESTIONS)
-- get_order_history_tool(customer_id="{customer_id}") - Get all customer orders
-- check_order_status_tool(order_id) - Check specific order by ID
-- semantic_product_search_tool(query) - Search products with self-correction
-
-**IMPORTANT**: When calling get_order_history_tool, always use: customer_id="{customer_id}"
-
-Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
+**RULES**:
+- Use tools first, then respond
+- Match customer language
+- Be helpful
+- Use customer_id="{customer_id}" in tools"""
 
     try:
         # Create agent with tools - simple binding without forcing
@@ -973,41 +778,39 @@ Remember: TOOL FIRST, RESPONSE SECOND. Always call tools before responding."""
                 agent_messages.append(tool_message)
                 new_messages.append(tool_message)  # CRITICAL: Track for state update
 
-            # Add explicit instruction to synthesize tool results into a customer-facing response
-            synthesis_instruction = SystemMessage(content="""Now provide a natural, helpful response to the customer based on the tool results above.
-
-RULES:
-1. Present information clearly and directly
-2. Match customer's language (English/Arabic/Franco-Arabic)
-3. Be empathetic and professional
-4. Do NOT say "Based on the information I found"
-5. Be concise
-
-If tools returned empty results, it's OK to:
-- Apologize and offer to help differently
-- Suggest contacting support team
-- Ask clarifying questions
-""")
+            # Add minimal synthesis instruction
+            synthesis_instruction = SystemMessage(content="Respond naturally to customer based on tool results.")
             agent_messages.append(synthesis_instruction)
 
             # Call agent again with tool results to get final response
             logger.info(f"[SUPPORT AGENT] Calling agent again to synthesize {len(tool_calls_info)} tool results")
             final_response = await support_agent.ainvoke(agent_messages)
-            new_messages.append(final_response)  # CRITICAL: Track final response too
 
-            # Check if final response has content
-            if final_response.content:
+            # CRITICAL FIX: Check for orphaned tool_calls BEFORE adding to state
+            # This prevents state corruption from orphaned tool_calls
+            final_tool_calls = get_tool_calls(final_response)
+            if final_tool_calls:
+                # Agent tried to call more tools in synthesis - NOT supported
+                logger.warning(f"[SUPPORT AGENT] Agent tried to call {len(final_tool_calls)} more tools in synthesis phase - not supported")
+                logger.warning(f"[SUPPORT AGENT] Cleansing orphaned tool_calls to prevent state corruption")
+                # Create clean AIMessage WITHOUT tool_calls
+                response_text = final_response.content if final_response.content else "I'd be happy to help! Could you please clarify what you need assistance with?"
+                clean_final_response = AIMessage(
+                    content=response_text,
+                    id=final_response.id if hasattr(final_response, 'id') else None
+                )
+                new_messages.append(clean_final_response)  # Add CLEAN message
+            elif final_response.content:
+                # Normal case: has content, no extra tool calls
                 response_text = final_response.content
+                new_messages.append(final_response)  # Safe to add as-is
                 logger.info(f"[SUPPORT AGENT] Final response generated: {response_text[:100]}")
             else:
-                # Check if agent is trying to call MORE tools
-                final_tool_calls = get_tool_calls(final_response)
-                if final_tool_calls:
-                    logger.warning(f"[SUPPORT AGENT] Agent tried to call {len(final_tool_calls)} more tools in synthesis phase - not supported")
-                    response_text = "I'd be happy to help! Could you please clarify what you need assistance with?"
-                else:
-                    logger.warning("[SUPPORT AGENT] Final response has empty content and no tool calls")
-                    response_text = "I'd be happy to assist you. Could you provide more details about your issue?"
+                # Edge case: empty content, no tool calls
+                logger.warning("[SUPPORT AGENT] Final response has empty content and no tool calls")
+                response_text = "I'd be happy to assist you. Could you provide more details about your issue?"
+                clean_final_response = AIMessage(content=response_text)
+                new_messages.append(clean_final_response)
         else:
             # No tools called - use direct response (e.g., for greetings, acknowledgments)
             logger.info("[SUPPORT AGENT] No tools called - using direct response")

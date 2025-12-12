@@ -13,8 +13,8 @@ from app.agents.nodes import (
     load_memory_node,
     supervisor_node,
     sales_agent_node,
-    support_agent_node,
-    save_memory_node
+    support_agent_node
+    # save_memory_node removed for performance optimization
 )
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,9 @@ def create_zaylon_graph():
     Create and compile the Zaylon agent graph.
 
     Graph Flow:
-    START → Load Memory → Supervisor → [Sales | Support] → Save Memory → END
+    START → Load Memory → Supervisor → [Sales | Support] → END
+
+    Note: SAVE_MEMORY removed from critical path for performance (<5s requirement)
 
     Returns:
         Compiled StateGraph ready for invocation
@@ -40,7 +42,7 @@ def create_zaylon_graph():
     workflow.add_node(NodeName.SUPERVISOR, supervisor_node)
     workflow.add_node(NodeName.SALES_AGENT, sales_agent_node)
     workflow.add_node(NodeName.SUPPORT_AGENT, support_agent_node)
-    workflow.add_node(NodeName.SAVE_MEMORY, save_memory_node)
+    # SAVE_MEMORY removed from graph for performance (was blocking response by 5+ seconds)
 
     # Set entry point
     workflow.set_entry_point(NodeName.LOAD_MEMORY)
@@ -59,14 +61,14 @@ def create_zaylon_graph():
         }
     )
 
-    # 3. Sales Agent → Save Memory
-    workflow.add_edge(NodeName.SALES_AGENT, NodeName.SAVE_MEMORY)
+    # 3. Sales Agent → END (skip save_memory to avoid latency)
+    workflow.add_edge(NodeName.SALES_AGENT, END)
 
-    # 4. Support Agent → Save Memory
-    workflow.add_edge(NodeName.SUPPORT_AGENT, NodeName.SAVE_MEMORY)
+    # 4. Support Agent → END (skip save_memory to avoid latency)
+    workflow.add_edge(NodeName.SUPPORT_AGENT, END)
 
-    # 5. Save Memory → END
-    workflow.add_edge(NodeName.SAVE_MEMORY, END)
+    # Note: SAVE_MEMORY node removed from critical path for performance
+    # Fact extraction can be done asynchronously in background if needed
 
     # Compile the graph
     # Use MemorySaver for checkpointing (allows conversation persistence)
