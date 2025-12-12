@@ -12,12 +12,16 @@ echo ""
 # Set Python path to include /app directory
 export PYTHONPATH=/app:$PYTHONPATH
 
-# Step 1: Populate knowledge base
-echo "Step 1: Populating knowledge base..."
-python scripts/populate_knowledge_base.py
+# Step 1: Populate knowledge base from DATABASE (not hardcoded docs)
+echo "Step 1: Indexing knowledge base from database..."
+python scripts/index_knowledge_from_db.py
 if [ $? -ne 0 ]; then
-    echo "❌ Knowledge base population failed"
-    exit 1
+    echo "⚠️  Knowledge base indexing failed, falling back to hardcoded docs"
+    python scripts/populate_knowledge_base.py
+    if [ $? -ne 0 ]; then
+        echo "❌ Knowledge base population failed"
+        exit 1
+    fi
 fi
 echo ""
 
