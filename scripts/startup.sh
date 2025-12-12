@@ -12,11 +12,12 @@ echo ""
 # Set Python path to include /app directory
 export PYTHONPATH=/app:$PYTHONPATH
 
-# Step 1: Populate knowledge base from DATABASE (not hardcoded docs)
-echo "Step 1: Indexing knowledge base from database..."
+# Step 1: Index knowledge base and products from database
+echo "Step 1a: Indexing knowledge base from database..."
+# Use Python script (can also use API: curl -X POST http://localhost:8000/api/v1/rag/index/knowledge/all)
 python scripts/index_knowledge_from_db.py
 if [ $? -ne 0 ]; then
-    echo "⚠️  Knowledge base indexing failed, falling back to hardcoded docs"
+    echo "⚠️  Knowledge base indexing from database failed, falling back to hardcoded docs"
     python scripts/populate_knowledge_base.py
     if [ $? -ne 0 ]; then
         echo "❌ Knowledge base population failed"

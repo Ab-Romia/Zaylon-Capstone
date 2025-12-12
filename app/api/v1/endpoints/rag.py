@@ -178,6 +178,34 @@ async def index_all_products(
 
 
 @router.post(
+    "/index/knowledge/all",
+    response_model=IndexAllProductsResponse,  # Reuse same response model
+    summary="Index all knowledge base documents"
+)
+@limiter.limit("5/hour")
+async def index_all_knowledge(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    api_key: str = Depends(verify_api_key)
+):
+    """
+    Index all active knowledge base documents from database into vector DB.
+
+    This is a resource-intensive operation. Use it when:
+    - Setting up RAG for the first time
+    - Rebuilding knowledge base after database updates
+    - Periodically to keep index fresh
+
+    Pulls all documents from knowledge_base table (not hardcoded).
+    Rate limited to 5 requests per hour.
+    """
+    ingestion_service = get_ingestion_service()
+    stats = await ingestion_service.index_all_knowledge(db)
+
+    return IndexAllProductsResponse(**stats, success=True)
+
+
+@router.post(
     "/index/knowledge",
     response_model=IndexKnowledgeResponse,
     summary="Index a knowledge base document"

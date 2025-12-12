@@ -180,6 +180,74 @@ class IngestionService:
             stats["error"] = str(e)
             return stats
 
+    async def index_all_knowledge(self, db: AsyncSession) -> Dict[str, Any]:
+        """
+        Index all active knowledge base documents from the database.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Statistics about the indexing operation
+        """
+        logger.info("Starting bulk knowledge base indexing...")
+        stats = {
+            "total": 0,
+            "indexed": 0,
+            "failed": 0,
+            "start_time": datetime.utcnow().isoformat()
+        }
+
+        try:
+            # Import here to avoid circular dependency
+            from database import KnowledgeBase
+
+            # Get all active knowledge base documents
+            stmt = select(KnowledgeBase).where(KnowledgeBase.is_active == True)
+            result = await db.execute(stmt)
+            kb_docs = result.scalars().all()
+
+            stats["total"] = len(kb_docs)
+            logger.info(f"Found {len(kb_docs)} active knowledge base documents to index")
+
+            # Index documents
+            for doc in kb_docs:
+                # Build metadata
+                metadata = {}
+                if doc.title:
+                    metadata["title"] = doc.title
+                if doc.category:
+                    metadata["category"] = doc.category
+                if doc.tags:
+                    metadata["tags"] = doc.tags
+                if doc.metadata:
+                    # Merge existing metadata
+                    metadata.update(doc.metadata)
+
+                # Index the document
+                success = await self.index_knowledge_document(
+                    doc_id=doc.doc_id,
+                    content=doc.content,
+                    metadata=metadata
+                )
+
+                if success:
+                    stats["indexed"] += 1
+                else:
+                    stats["failed"] += 1
+
+                logger.info(f"Processed {stats['indexed'] + stats['failed']}/{len(kb_docs)} documents")
+
+            stats["end_time"] = datetime.utcnow().isoformat()
+            logger.info(f"Knowledge base indexing complete: {stats['indexed']} indexed, {stats['failed']} failed")
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Bulk knowledge base indexing failed: {e}")
+            stats["error"] = str(e)
+            return stats
+
     async def index_knowledge_document(
         self,
         doc_id: str,
