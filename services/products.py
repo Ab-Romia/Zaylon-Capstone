@@ -15,19 +15,25 @@ logger = logging.getLogger(__name__)
 PRODUCT_KEYWORDS = {
     # Clothing items - mapped to English search terms
     "jeans": ["jeans", "جينز", "جينس", "jeanz", "denim"],
-    "pants": ["pants", "بنطلون", "بنطلونات", "pantalon", "bantalon", "trousers"],
+    "pants": ["pants", "بنطلون", "بنطلونات", "pantalon", "bantalon", "trousers", "joggers"],
     "hoodie": ["hoodie", "هودي", "هوديز", "hoody", "sweatshirt"],
     "shirt": ["shirt", "شيرت", "قميص", "shert", "t-shirt", "tshirt", "tee"],
-    "jacket": ["jacket", "جاكيت", "جاكت", "jaket", "coat", "معطف"],
+    "jacket": ["jacket", "جاكيت", "جاكت", "jaket", "coat", "معطف", "bomber", "puffer"],
     "shoes": ["shoes", "حذاء", "جزمة", "shoe", "7ezaa2", "gizma", "sneakers", "boots", "footwear"],
     "dress": ["dress", "فستان", "fostan", "dresses"],
     "skirt": ["skirt", "جيبة", "jiba", "skirts"],
     "shorts": ["shorts", "شورت", "short"],
     "sweater": ["sweater", "سويتر", "pullover", "knit"],
-    "bag": ["bag", "شنطة", "حقيبة", "shanta", "bags", "handbag"],
-    "cap": ["cap", "كاب", "طاقية", "hat"],
+    "bag": ["bag", "شنطة", "حقيبة", "shanta", "bags", "handbag", "crossbody"],
+    "cap": ["cap", "كاب", "طاقية", "hat", "beanie"],
+    "socks": ["socks", "شراب", "جوارب", "sharab"],
+    # Seasonal keywords - CRITICAL for seasonal queries
+    "winter": ["winter", "شتاء", "شتوي", "شتا", "شتة", "sheta", "shitaa", "cold", "برد", "بارد"],
+    "summer": ["summer", "صيف", "صيفي", "sayf", "saif", "hot", "حر"],
+    "spring": ["spring", "ربيع", "ربيعي", "rabie"],
+    "fall": ["fall", "autumn", "خريف", "خريفي", "kharif"],
     # Generic categories - will match ANY clothing
-    "clothing": ["clothing", "clothes", "apparel", "wear", "garment", "outfit"],
+    "clothing": ["clothing", "clothes", "apparel", "wear", "garment", "outfit", "لبس", "هدوم", "ملابس"],
     "accessories": ["accessories", "accessory", "اكسسوار"],
 }
 
@@ -164,10 +170,12 @@ async def search_products(
         # Build database query with enhanced matching
         conditions = []
 
-        # Add product keyword conditions - match against actual query words too
+        # Add product keyword conditions - match against name, description, tags, and category
         for keyword in product_keywords:
             conditions.append(Product.name.ilike(f"%{keyword}%"))
             conditions.append(Product.description.ilike(f"%{keyword}%"))
+            conditions.append(Product.category.ilike(f"%{keyword}%"))
+            conditions.append(Product.tags.any(keyword))
 
         # Add color conditions
         for color in color_keywords:
@@ -178,6 +186,8 @@ async def search_products(
         for word in query_words:
             conditions.append(Product.name.ilike(f"%{word}%"))
             conditions.append(Product.description.ilike(f"%{word}%"))
+            conditions.append(Product.category.ilike(f"%{word}%"))
+            conditions.append(Product.tags.any(word))
 
         # Execute query
         if conditions:
@@ -210,7 +220,7 @@ async def search_products(
                 query=query,
                 db=db,
                 limit=limit,
-                min_score=0.4  # Lower threshold for broader matching
+                min_score=0.3  # Even lower threshold for fallback
             )
             if semantic_results:
                 logger.info(f"Semantic search found {len(semantic_results)} products")
@@ -221,7 +231,20 @@ async def search_products(
                 products = result.scalars().all()
         except Exception as e:
             logger.warning(f"Semantic search fallback failed: {e}")
-            # Continue with empty products
+
+    # FINAL FALLBACK: If still no products, return top products by stock
+    # NEVER return zero products - always show something!
+    if not products:
+        logger.warning(f"All searches returned 0 results. Returning top products as final fallback.")
+        stmt = (
+            select(Product)
+            .where(Product.is_active == True)
+            .order_by(Product.stock_count.desc())
+            .limit(limit)
+        )
+        result = await db.execute(stmt)
+        products = result.scalars().all()
+        logger.info(f"Final fallback returned {len(products)} top products")
 
     # Format products for response
     product_list = []

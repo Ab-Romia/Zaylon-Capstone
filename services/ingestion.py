@@ -49,8 +49,14 @@ class IngestionService:
             f"Price: {product.price} EGP"
         ]
 
+        if product.category:
+            parts.append(f"Category: {product.category}")
+
         if product.description:
             parts.append(f"Description: {product.description}")
+
+        if product.tags:
+            parts.append(f"Tags: {', '.join(product.tags)}")
 
         if product.sizes:
             parts.append(f"Available sizes: {', '.join(product.sizes)}")
@@ -96,6 +102,8 @@ class IngestionService:
                 "name": product.name,
                 "price": float(product.price),
                 "description": product.description or "",
+                "category": product.category or "",
+                "tags": product.tags or [],
                 "sizes": product.sizes or [],
                 "colors": product.colors or [],
                 "stock_count": product.stock_count,

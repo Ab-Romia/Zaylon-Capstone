@@ -65,9 +65,9 @@ class Settings(BaseSettings):
 
     # RAG Retrieval Settings
     rag_top_k: int = 5  # Number of documents to retrieve
-    rag_similarity_threshold: float = 0.5  # Minimum similarity score (lowered for better recall)
+    rag_similarity_threshold: float = 0.35  # Minimum similarity score (lowered for better recall, especially for Arabic/Franco-Arabic)
     rag_max_context_length: int = 4000  # Max tokens for context
-    rag_chunk_size: int = 500  # Document chunk size for indexing
+    rag_chunk_size: int = 300  # Document chunk size for indexing (smaller chunks for better retrieval)
     rag_chunk_overlap: int = 50  # Overlap between chunks
 
     # RAG Features
